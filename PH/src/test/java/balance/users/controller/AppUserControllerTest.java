@@ -21,6 +21,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(AppUserController.class)
+@org.springframework.context.annotation.Import(balance.config.TestSecurityConfig.class)
 class AppUserControllerTest {
 
     @Autowired private MockMvc mockMvc;

@@ -23,6 +23,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(SalesController.class)
+@org.springframework.context.annotation.Import(balance.config.TestSecurityConfig.class)
 class SalesControllerTest {
 
     @Autowired private MockMvc mockMvc;

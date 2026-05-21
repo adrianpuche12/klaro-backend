@@ -22,6 +22,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(InventoryController.class)
+@org.springframework.context.annotation.Import(balance.config.TestSecurityConfig.class)
 class InventoryControllerTest {
 
     @Autowired private MockMvc mockMvc;
