@@ -1,6 +1,7 @@
 package balance.storage.controller;
 
 import balance.storage.service.R2StorageService;
+import balance.tenant.context.TenantSecurityUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -37,8 +38,11 @@ public class StorageController {
             return ResponseEntity.badRequest().body(Map.of("error", "Solo se permiten imágenes"));
         }
 
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        String folder = "comprobantes/tenant_" + tenantId;
+
         try {
-            String url = r2.upload(file, "comprobantes");
+            String url = r2.upload(file, folder);
             return ResponseEntity.ok(Map.of("url", url));
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
