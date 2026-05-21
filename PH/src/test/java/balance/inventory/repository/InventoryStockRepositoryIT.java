@@ -28,6 +28,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @TestPropertySource(locations = "classpath:application-test.properties")
 class InventoryStockRepositoryIT {
 
+    private static final Long TENANT_ID = 1L;
+    private static final Long OTHER_TENANT_ID = 2L;
+
     @Container
     @ServiceConnection
     static PostgreSQLContainer<?> postgres =
@@ -47,187 +50,172 @@ class InventoryStockRepositoryIT {
 
         store = new Store();
         store.setName("Danli Test");
+        store.setTenantId(TENANT_ID);
         store = storeRepository.save(store);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private Product saveProduct(String name, int minStock) {
+        return saveProduct(name, minStock, store, TENANT_ID);
+    }
+
+    private Product saveProduct(String name, int minStock, Store s, Long tenantId) {
         Product p = new Product();
         p.setName(name);
         p.setPrice(new BigDecimal("100.00"));
         p.setMinStock(minStock);
         p.setActive(true);
-        p.setStore(store);
+        p.setStore(s);
+        p.setTenantId(tenantId);
         return productRepository.save(p);
     }
 
     private InventoryStock saveStock(Product product, int quantity) {
-        InventoryStock s = new InventoryStock();
-        s.setProduct(product);
-        s.setStore(store);
-        s.setQuantity(quantity);
-        return stockRepository.save(s);
+        return saveStock(product, quantity, store, TENANT_ID);
     }
 
-    // ── findLowStockByStoreId — lógica principal ──────────────────────────────
+    private InventoryStock saveStock(Product product, int quantity, Store s, Long tenantId) {
+        InventoryStock stock = new InventoryStock();
+        stock.setProduct(product);
+        stock.setStore(s);
+        stock.setQuantity(quantity);
+        stock.setTenantId(tenantId);
+        return stockRepository.save(stock);
+    }
+
+    // ── findLowStockByStoreIdAndTenantId ──────────────────────────────────────
 
     @Test
-    void findLowStockByStoreId_returnsProductBelowMinStock() {
-        // minStock=5, quantity=3 → bajo stock ✓
+    void findLowStock_returnsProductBelowMinStock() {
         Product p = saveProduct("Pollo", 5);
         saveStock(p, 3);
 
-        List<InventoryStock> result = stockRepository.findLowStockByStoreId(store.getId());
+        List<InventoryStock> result = stockRepository.findLowStockByStoreIdAndTenantId(
+                store.getId(), TENANT_ID);
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getProduct().getName()).isEqualTo("Pollo");
     }
 
     @Test
-    void findLowStockByStoreId_excludesProductAboveMinStock() {
-        // minStock=5, quantity=10 → stock OK, no debe aparecer
+    void findLowStock_excludesProductAboveMinStock() {
         Product p = saveProduct("Pollo", 5);
         saveStock(p, 10);
 
-        List<InventoryStock> result = stockRepository.findLowStockByStoreId(store.getId());
+        List<InventoryStock> result = stockRepository.findLowStockByStoreIdAndTenantId(
+                store.getId(), TENANT_ID);
 
         assertThat(result).isEmpty();
     }
 
     @Test
-    void findLowStockByStoreId_excludesProductWithMinStockZero() {
-        // Bug fix verificado: minStock=0, quantity=0 → NO es bajo stock
-        // La query anterior (sin la condición minStock > 0) devolvía este producto
-        Product p = saveProduct("Producto sin mínimo", 0);
+    void findLowStock_excludesProductWithMinStockZero() {
+        Product p = saveProduct("Sin mínimo", 0);
         saveStock(p, 0);
 
-        List<InventoryStock> result = stockRepository.findLowStockByStoreId(store.getId());
+        List<InventoryStock> result = stockRepository.findLowStockByStoreIdAndTenantId(
+                store.getId(), TENANT_ID);
 
         assertThat(result).isEmpty();
     }
 
     @Test
-    void findLowStockByStoreId_excludesProductWithMinStockZeroAndPositiveQuantity() {
-        // minStock=0, quantity=5 → sin mínimo definido, no es bajo stock
-        Product p = saveProduct("Producto sin mínimo con stock", 0);
-        saveStock(p, 5);
-
-        List<InventoryStock> result = stockRepository.findLowStockByStoreId(store.getId());
-
-        assertThat(result).isEmpty();
-    }
-
-    @Test
-    void findLowStockByStoreId_includesProductAtExactMinStock() {
-        // minStock=5, quantity=5 → exactamente en el límite → bajo stock ✓
+    void findLowStock_includesProductAtExactMinStock() {
         Product p = saveProduct("Pollo en límite", 5);
         saveStock(p, 5);
 
-        List<InventoryStock> result = stockRepository.findLowStockByStoreId(store.getId());
+        List<InventoryStock> result = stockRepository.findLowStockByStoreIdAndTenantId(
+                store.getId(), TENANT_ID);
 
         assertThat(result).hasSize(1);
     }
 
     @Test
-    void findLowStockByStoreId_returnsOnlyLowStockAmongMultipleProducts() {
-        // 3 productos: 1 bajo stock, 1 OK, 1 sin mínimo
-        Product bajo   = saveProduct("Bajo stock",   5); saveStock(bajo,   2);
-        Product ok     = saveProduct("OK",           5); saveStock(ok,     10);
-        Product sinMin = saveProduct("Sin mínimo",   0); saveStock(sinMin, 0);
+    void findLowStock_excludesOtherTenants() {
+        Product p = saveProduct("Pollo", 5, store, OTHER_TENANT_ID);
+        saveStock(p, 1, store, OTHER_TENANT_ID);
 
-        List<InventoryStock> result = stockRepository.findLowStockByStoreId(store.getId());
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getProduct().getName()).isEqualTo("Bajo stock");
-    }
-
-    @Test
-    void findLowStockByStoreId_onlyReturnsProductsForRequestedStore() {
-        // Crear segundo local con producto bajo stock — no debe aparecer
-        Store otraStore = new Store();
-        otraStore.setName("El Paraíso Test");
-        otraStore = storeRepository.save(otraStore);
-
-        Product pOtra = new Product();
-        pOtra.setName("Pollo Paraíso");
-        pOtra.setPrice(new BigDecimal("100.00"));
-        pOtra.setMinStock(5);
-        pOtra.setActive(true);
-        pOtra.setStore(otraStore);
-        pOtra = productRepository.save(pOtra);
-
-        InventoryStock sOtra = new InventoryStock();
-        sOtra.setProduct(pOtra);
-        sOtra.setStore(otraStore);
-        sOtra.setQuantity(1);
-        stockRepository.save(sOtra);
-
-        // El local principal no tiene productos bajo stock
-        List<InventoryStock> result = stockRepository.findLowStockByStoreId(store.getId());
+        List<InventoryStock> result = stockRepository.findLowStockByStoreIdAndTenantId(
+                store.getId(), TENANT_ID);
 
         assertThat(result).isEmpty();
     }
 
-    // ── countLowStockByStoreId ────────────────────────────────────────────────
+    // ── countLowStockByStoreIdAndTenantId ─────────────────────────────────────
 
     @Test
-    void countLowStockByStoreId_returnsCorrectCount() {
+    void countLowStock_returnsCorrectCount() {
         Product p1 = saveProduct("Bajo1", 5); saveStock(p1, 1);
         Product p2 = saveProduct("Bajo2", 5); saveStock(p2, 2);
         Product p3 = saveProduct("OK",    5); saveStock(p3, 10);
 
-        long count = stockRepository.countLowStockByStoreId(store.getId());
+        long count = stockRepository.countLowStockByStoreIdAndTenantId(store.getId(), TENANT_ID);
 
         assertThat(count).isEqualTo(2);
     }
 
     @Test
-    void countLowStockByStoreId_returnsZeroWhenNoLowStock() {
+    void countLowStock_returnsZeroWhenNoLowStock() {
         Product p = saveProduct("OK", 5);
         saveStock(p, 10);
 
-        long count = stockRepository.countLowStockByStoreId(store.getId());
+        long count = stockRepository.countLowStockByStoreIdAndTenantId(store.getId(), TENANT_ID);
 
         assertThat(count).isZero();
     }
 
-    // ── findByProductIdAndStoreId ─────────────────────────────────────────────
+    // ── findByProductIdAndStoreIdAndTenantId ──────────────────────────────────
 
     @Test
-    void findByProductIdAndStoreId_returnsStockWhenExists() {
+    void findByProductAndStore_returnsStockWhenExists() {
         Product p = saveProduct("Pollo", 5);
-        InventoryStock saved = saveStock(p, 10);
+        saveStock(p, 10);
 
-        Optional<InventoryStock> result =
-                stockRepository.findByProductIdAndStoreId(p.getId(), store.getId());
+        Optional<InventoryStock> result = stockRepository.findByProductIdAndStoreIdAndTenantId(
+                p.getId(), store.getId(), TENANT_ID);
 
         assertThat(result).isPresent();
         assertThat(result.get().getQuantity()).isEqualTo(10);
     }
 
     @Test
-    void findByProductIdAndStoreId_returnsEmptyWhenNotExists() {
-        Optional<InventoryStock> result =
-                stockRepository.findByProductIdAndStoreId(999L, store.getId());
+    void findByProductAndStore_returnsEmptyForOtherTenant() {
+        Product p = saveProduct("Pollo", 5, store, OTHER_TENANT_ID);
+        saveStock(p, 10, store, OTHER_TENANT_ID);
+
+        Optional<InventoryStock> result = stockRepository.findByProductIdAndStoreIdAndTenantId(
+                p.getId(), store.getId(), TENANT_ID);
 
         assertThat(result).isEmpty();
     }
 
-    // ── findByStoreIdOrderByProductNameAsc ────────────────────────────────────
+    // ── findByStoreIdAndTenantIdOrderByProductNameAsc ─────────────────────────
 
     @Test
-    void findByStoreIdOrderByProductNameAsc_returnsInAlphabeticOrder() {
-        Product pZ = saveProduct("Zapallo",  0); saveStock(pZ, 5);
-        Product pA = saveProduct("Ala",      0); saveStock(pA, 3);
-        Product pM = saveProduct("Muslo",    0); saveStock(pM, 8);
+    void findByStoreAndTenant_returnsInAlphabeticOrder() {
+        Product pZ = saveProduct("Zapallo", 0); saveStock(pZ, 5);
+        Product pA = saveProduct("Ala",     0); saveStock(pA, 3);
+        Product pM = saveProduct("Muslo",   0); saveStock(pM, 8);
 
-        List<InventoryStock> result =
-                stockRepository.findByStoreIdOrderByProductNameAsc(store.getId());
+        List<InventoryStock> result = stockRepository.findByStoreIdAndTenantIdOrderByProductNameAsc(
+                store.getId(), TENANT_ID);
 
         assertThat(result).hasSize(3);
         assertThat(result.get(0).getProduct().getName()).isEqualTo("Ala");
         assertThat(result.get(1).getProduct().getName()).isEqualTo("Muslo");
         assertThat(result.get(2).getProduct().getName()).isEqualTo("Zapallo");
+    }
+
+    @Test
+    void findByStoreAndTenant_excludesOtherTenants() {
+        Product pMio  = saveProduct("Mio",   0, store, TENANT_ID);   saveStock(pMio,  5, store, TENANT_ID);
+        Product pOtro = saveProduct("Ajeno", 0, store, OTHER_TENANT_ID); saveStock(pOtro, 3, store, OTHER_TENANT_ID);
+
+        List<InventoryStock> result = stockRepository.findByStoreIdAndTenantIdOrderByProductNameAsc(
+                store.getId(), TENANT_ID);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getProduct().getName()).isEqualTo("Mio");
     }
 }

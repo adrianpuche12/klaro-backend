@@ -11,7 +11,10 @@ public class SupplierPayment {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    
+
+    @Column(name = "tenant_id", nullable = false)
+    private Long tenantId;
+
     private String supplier;
 
     @Size(max = 255, message = "La descripción no puede tener más de 255 caracteres")
@@ -97,4 +100,7 @@ public class SupplierPayment {
 
     public String getImageUri() { return imageUri; }
     public void setImageUri(String imageUri) { this.imageUri = imageUri; }
+
+    public Long getTenantId() { return tenantId; }
+    public void setTenantId(Long tenantId) { this.tenantId = tenantId; }
 }

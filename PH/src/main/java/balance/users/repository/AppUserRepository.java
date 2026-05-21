@@ -7,8 +7,14 @@ import java.util.List;
 import java.util.Optional;
 
 public interface AppUserRepository extends JpaRepository<AppUser, Long> {
-    List<AppUser> findByStoreIdOrderByFullNameAsc(Long storeId);
-    List<AppUser> findAllByOrderByFullNameAsc();
-    Optional<AppUser> findByUsername(String username);
-    boolean existsByUsername(String username);
+
+    List<AppUser> findByTenantIdOrderByFullNameAsc(Long tenantId);
+
+    List<AppUser> findByStoreIdAndTenantIdOrderByFullNameAsc(Long storeId, Long tenantId);
+
+    Optional<AppUser> findByUsernameAndTenantId(String username, Long tenantId);
+
+    Optional<AppUser> findByIdAndTenantId(Long id, Long tenantId);
+
+    boolean existsByUsernameAndTenantId(String username, Long tenantId);
 }

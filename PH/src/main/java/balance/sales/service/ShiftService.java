@@ -5,6 +5,7 @@ import balance.repository.StoreRepository;
 import balance.sales.dto.ShiftResponseDTO;
 import balance.sales.model.Shift;
 import balance.sales.repository.ShiftRepository;
+import balance.tenant.context.TenantSecurityUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -24,10 +25,10 @@ public class ShiftService {
 
     @Transactional
     public ShiftResponseDTO openShift(Long storeId, String username) {
-        Store store = storeRepository.findById(storeId)
-                .orElseThrow(() -> new IllegalArgumentException("Local no encontrado"));
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        Store store = TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
 
-        if (shiftRepository.existsByStoreIdAndStatus(storeId, "OPEN")) {
+        if (shiftRepository.existsByStoreIdAndStatusAndTenantId(storeId, "OPEN", tenantId)) {
             throw new IllegalStateException("Ya existe un turno abierto para este local");
         }
 
@@ -36,13 +37,15 @@ public class ShiftService {
         shift.setUsername(username);
         shift.setStatus("OPEN");
         shift.setCode(generateCode(store));
+        shift.setTenantId(tenantId);
         shiftRepository.save(shift);
         return ShiftResponseDTO.from(shift);
     }
 
     @Transactional
     public ShiftResponseDTO closeShift(Long shiftId) {
-        Shift shift = shiftRepository.findById(shiftId)
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        Shift shift = shiftRepository.findByIdAndTenantId(shiftId, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
         if ("CLOSED".equals(shift.getStatus())) {
             throw new IllegalStateException("El turno ya está cerrado");
@@ -54,24 +57,28 @@ public class ShiftService {
     }
 
     public ShiftResponseDTO getActiveShift(Long storeId) {
-        return shiftRepository.findByStoreIdAndStatus(storeId, "OPEN")
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
+        return shiftRepository.findByStoreIdAndStatusAndTenantId(storeId, "OPEN", tenantId)
                 .map(ShiftResponseDTO::from)
                 .orElse(null);
     }
 
     public List<ShiftResponseDTO> getShiftHistory(Long storeId, int page, int size) {
-        return shiftRepository.findByStoreIdOrderByOpenedAtDesc(storeId, PageRequest.of(page, size))
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
+        return shiftRepository.findByStoreIdAndTenantIdOrderByOpenedAtDesc(
+                storeId, tenantId, PageRequest.of(page, size))
                 .stream().map(ShiftResponseDTO::from).toList();
     }
 
     public ShiftResponseDTO getById(Long shiftId) {
-        return shiftRepository.findById(shiftId)
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        return shiftRepository.findByIdAndTenantId(shiftId, tenantId)
                 .map(ShiftResponseDTO::from)
                 .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
     }
 
-    /** Genera código único de turno: T-YYYYMMDD-HHmm-DAN
-     *  Incluye hora:minuto para permitir múltiples turnos por día. */
     private String generateCode(Store store) {
         String date = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         String time = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmm"));

@@ -10,13 +10,13 @@ import balance.inventory.repository.InventoryMovementRepository;
 import balance.inventory.repository.InventoryStockRepository;
 import balance.model.Store;
 import balance.repository.StoreRepository;
+import balance.tenant.context.TenantSecurityUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Optional;
 
 @Service
 public class InventoryService {
@@ -27,45 +27,44 @@ public class InventoryService {
     @Autowired private StoreRepository storeRepository;
     @Autowired private CategoryRepository categoryRepository;
 
-    // ── Stock ──────────────────────────────────────────────────────────────
-
-    /**
-     * Retorna el stock de todos los productos activos del local.
-     * Si un producto no tiene registro de stock, lo crea automáticamente con quantity=0.
-     */
     public List<StockItemDTO> getStock(Long storeId) {
-        Store store = storeRepository.findById(storeId).orElse(null);
-        if (store == null) return List.of();
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        Store store = TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
 
-        // Trae TODOS los productos del local
         List<Product> products = productRepository.findByStoreIdOrderByNameAsc(storeId);
 
         return products.stream().map(product -> {
-            // Busca o crea el registro de stock en memoria (sin guardar)
             InventoryStock stock = stockRepository
-                    .findByProductIdAndStoreId(product.getId(), storeId)
+                    .findByProductIdAndStoreIdAndTenantId(product.getId(), storeId, tenantId)
                     .orElseGet(() -> {
                         InventoryStock s = new InventoryStock();
                         s.setProduct(product);
                         s.setStore(store);
+                        s.setTenantId(tenantId);
                         s.setQuantity(0);
-                        return stockRepository.save(s); // auto-crear si falta
+                        return stockRepository.save(s);
                     });
             return StockItemDTO.from(stock);
         }).toList();
     }
 
     public List<StockItemDTO> getLowStock(Long storeId) {
-        return stockRepository.findLowStockByStoreId(storeId)
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
+        return stockRepository.findLowStockByStoreIdAndTenantId(storeId, tenantId)
                 .stream().map(StockItemDTO::from).toList();
     }
 
     public StockSummaryDTO getSummary(Long storeId) {
-        List<InventoryStock> stocks = stockRepository.findByStoreIdOrderByProductNameAsc(storeId);
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
+
+        List<InventoryStock> stocks = stockRepository
+                .findByStoreIdAndTenantIdOrderByProductNameAsc(storeId, tenantId);
 
         long total    = stocks.size();
         long active   = stocks.stream().filter(s -> Boolean.TRUE.equals(s.getProduct().getActive())).count();
-        long lowStock = stockRepository.countLowStockByStoreId(storeId);
+        long lowStock = stockRepository.countLowStockByStoreIdAndTenantId(storeId, tenantId);
         long cats     = categoryRepository.findRootsByStoreId(storeId).size();
 
         BigDecimal value = stocks.stream()
@@ -76,25 +75,22 @@ public class InventoryService {
         return new StockSummaryDTO(total, active, lowStock, cats, value);
     }
 
-    // ── Ajuste de stock ────────────────────────────────────────────────────
-
-    /**
-     * Aplica un ajuste de stock (ENTRADA, SALIDA o AJUSTE) y registra el movimiento.
-     * @throws IllegalArgumentException si el stock es insuficiente para una SALIDA
-     */
     @Transactional
     public StockItemDTO adjust(Long storeId, StockAdjustmentDTO dto) {
-        Store store = storeRepository.findById(storeId)
-                .orElseThrow(() -> new IllegalArgumentException("Local no encontrado"));
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        Store store = TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
+
         Product product = productRepository.findById(dto.getProductId())
+                .filter(p -> tenantId.equals(p.getTenantId()))
                 .orElseThrow(() -> new IllegalArgumentException("Producto no encontrado"));
 
         InventoryStock stock = stockRepository
-                .findByProductIdAndStoreId(dto.getProductId(), storeId)
+                .findByProductIdAndStoreIdAndTenantId(dto.getProductId(), storeId, tenantId)
                 .orElseGet(() -> {
                     InventoryStock s = new InventoryStock();
                     s.setProduct(product);
                     s.setStore(store);
+                    s.setTenantId(tenantId);
                     s.setQuantity(0);
                     return s;
                 });
@@ -105,7 +101,6 @@ public class InventoryService {
         stock.setQuantity(newQty);
         stockRepository.save(stock);
 
-        // Registrar movimiento
         InventoryMovement movement = new InventoryMovement();
         movement.setType(dto.getType());
         movement.setQuantity(dto.getQuantity());
@@ -114,33 +109,33 @@ public class InventoryService {
         movement.setUsername(dto.getUsername());
         movement.setProduct(product);
         movement.setStore(store);
+        movement.setTenantId(tenantId);
         movementRepository.save(movement);
 
         return StockItemDTO.from(stock);
     }
 
-    // ── Ajuste silencioso (usado por SalesService — no lanza excepción si stock insuficiente) ──
-
     @Transactional
     public void adjustSilent(Long storeId, StockAdjustmentDTO dto) {
-        try { adjust(storeId, dto); } catch (IllegalArgumentException ignored) {}
+        try { adjust(storeId, dto); } catch (Exception ignored) {}
     }
 
-    // ── Movimientos ────────────────────────────────────────────────────────
-
     public List<MovementDTO> getMovements(Long storeId) {
-        return movementRepository.findByStoreIdOrderByCreatedAtDesc(storeId)
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
+        return movementRepository.findByStoreIdAndTenantIdOrderByCreatedAtDesc(storeId, tenantId)
                 .stream().map(MovementDTO::from).toList();
     }
 
-    // ── Auto-crear stock al crear producto ─────────────────────────────────
-
     @Transactional
     public void initStock(Product product, Store store) {
-        if (stockRepository.findByProductIdAndStoreId(product.getId(), store.getId()).isEmpty()) {
+        Long tenantId = product.getTenantId();
+        if (stockRepository.findByProductIdAndStoreIdAndTenantId(
+                product.getId(), store.getId(), tenantId).isEmpty()) {
             InventoryStock stock = new InventoryStock();
             stock.setProduct(product);
             stock.setStore(store);
+            stock.setTenantId(tenantId);
             stock.setQuantity(0);
             stockRepository.save(stock);
         }

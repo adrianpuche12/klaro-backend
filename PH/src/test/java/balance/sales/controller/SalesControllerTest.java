@@ -173,8 +173,9 @@ class SalesControllerTest {
     void getSummary_returns200WhenFound() throws Exception {
         DailySummaryDTO summary = new DailySummaryDTO(
                 LocalDate.now(), 1L, "Danli", 5,
-                new BigDecimal("1000.00"), new BigDecimal("150.00"),
-                new BigDecimal("1150.00"), List.of()
+                new BigDecimal("1000.00"), new BigDecimal("0.00"),
+                new BigDecimal("1000.00"), new BigDecimal("800.00"),
+                new BigDecimal("200.00"), List.of()
         );
         when(salesService.getDailySummary(1L)).thenReturn(summary);
 

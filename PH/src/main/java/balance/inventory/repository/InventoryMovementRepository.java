@@ -9,9 +9,10 @@ import java.util.List;
 @Repository
 public interface InventoryMovementRepository extends JpaRepository<InventoryMovement, Long> {
 
-    List<InventoryMovement> findByStoreIdOrderByCreatedAtDesc(Long storeId);
+    List<InventoryMovement> findByStoreIdAndTenantIdOrderByCreatedAtDesc(Long storeId, Long tenantId);
 
-    List<InventoryMovement> findByProductIdAndStoreIdOrderByCreatedAtDesc(Long productId, Long storeId);
+    List<InventoryMovement> findByProductIdAndStoreIdAndTenantIdOrderByCreatedAtDesc(
+            Long productId, Long storeId, Long tenantId);
 
     void deleteByProductId(Long productId);
 }

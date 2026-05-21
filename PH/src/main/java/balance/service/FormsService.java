@@ -1,302 +1,43 @@
 package balance.service;
 
 import balance.dto.AllOperationsDTO;
-import balance.model.ClosingDeposit;
-import balance.model.SupplierPayment;
-import balance.model.SalaryPayment;
-import balance.repository.ClosingDepositRepository;
-import balance.repository.SupplierPaymentRepository;
-import balance.repository.SalaryPaymentRepository;
+import balance.dto.GastoAdminRequestDTO;
+import balance.dto.GastoAdminResponseDTO;
+import balance.model.*;
+import balance.repository.*;
+import balance.tenant.context.TenantSecurityUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
-
-import java.math.BigDecimal;
-import java.util.ArrayList;
-import balance.model.Store;
-import balance.dto.GastoAdminRequestDTO;
-import balance.dto.GastoAdminResponseDTO;
-import balance.model.GastoAdmin;
-import balance.model.Transaction;
-import balance.repository.GastoAdminRepository;
-import balance.repository.TransactionRepository;
-import balance.repository.StoreRepository;
-
 
 @Service
 @Transactional
 public class FormsService {
 
-    @Autowired
-    private GastoAdminRepository gastoAdminRepository;
+    @Autowired private GastoAdminRepository gastoAdminRepository;
+    @Autowired private TransactionRepository transactionRepository;
+    @Autowired private StoreRepository storeRepository;
+    @Autowired private ClosingDepositRepository closingDepositRepository;
+    @Autowired private SupplierPaymentRepository supplierPaymentRepository;
+    @Autowired private SalaryPaymentRepository salaryPaymentRepository;
 
-    @Autowired
-    private TransactionRepository transactionRepository;
+    // ── Operaciones combinadas ─────────────────────────────────────────────
 
-    @Autowired
-    private StoreRepository storeRepository;
-
-    @Autowired
-    private ClosingDepositRepository closingDepositRepository;
-
-    @Autowired
-    private SupplierPaymentRepository supplierPaymentRepository;
-
-    @Autowired
-    private SalaryPaymentRepository salaryPaymentRepository;
-
-    // Métodos para obtener operaciones
     public List<AllOperationsDTO> getAllOperations() {
-        List<AllOperationsDTO> allOperations = new ArrayList<>();
-
-        allOperations.addAll(
-                closingDepositRepository.findAll().stream()
-                        .map(AllOperationsDTO::fromClosingDeposit)
-                        .collect(Collectors.toList())
-        );
-
-        allOperations.addAll(
-                supplierPaymentRepository.findAll().stream()
-                        .map(AllOperationsDTO::fromSupplierPayment)
-                        .collect(Collectors.toList())
-        );
-
-        allOperations.addAll(
-                salaryPaymentRepository.findAll().stream()
-                        .map(AllOperationsDTO::fromSalaryPayment)
-                        .collect(Collectors.toList())
-        );
-
-        allOperations.sort((t1, t2) -> {
-            if (t1.getDate() == null) return 1;
-            if (t2.getDate() == null) return -1;
-            return t2.getDate().compareTo(t1.getDate());
-        });
-
-        return allOperations;
-    }
-
-    public List<AllOperationsDTO> getOperationsByDateRange(LocalDate startDate, LocalDate endDate) {
-        List<AllOperationsDTO> allOperations = new ArrayList<>();
-
-        closingDepositRepository.findByDepositDateBetweenOrderByDepositDateDesc(startDate, endDate)
-                .stream()
-                .map(AllOperationsDTO::fromClosingDeposit)
-                .forEach(allOperations::add);
-
-        supplierPaymentRepository.findByPaymentDateBetweenOrderByPaymentDateDesc(startDate, endDate)
-                .stream()
-                .map(AllOperationsDTO::fromSupplierPayment)
-                .forEach(allOperations::add);
-
-        salaryPaymentRepository.findBySalaryDateBetweenOrderBySalaryDateDesc(startDate, endDate)
-                .stream()
-                .map(AllOperationsDTO::fromSalaryPayment)
-                .forEach(allOperations::add);
-
-        allOperations.sort((o1, o2) -> {
-            if (o1.getDate() == null) return 1;
-            if (o2.getDate() == null) return -1;
-            return o2.getDate().compareTo(o1.getDate());
-        });
-
-        return allOperations;
-    }
-
-    // Método para filtrar por store
-    public List<AllOperationsDTO> getOperationsByStore(Long storeId) {
-        List<AllOperationsDTO> allOperations = new ArrayList<>();
-
-        closingDepositRepository.findByStoreId(storeId)
-                .stream()
-                .map(AllOperationsDTO::fromClosingDeposit)
-                .forEach(allOperations::add);
-
-        supplierPaymentRepository.findByStoreId(storeId)
-                .stream()
-                .map(AllOperationsDTO::fromSupplierPayment)
-                .forEach(allOperations::add);
-
-        salaryPaymentRepository.findByStoreId(storeId)
-                .stream()
-                .map(AllOperationsDTO::fromSalaryPayment)
-                .forEach(allOperations::add);
-
-        allOperations.sort((o1, o2) -> {
-            if (o1.getDate() == null) return 1;
-            if (o2.getDate() == null) return -1;
-            return o2.getDate().compareTo(o1.getDate());
-        });
-
-        return allOperations;
-    }
-
-    // Método para filtrar por fecha y store
-    public List<AllOperationsDTO> getOperationsByDateRangeAndStore(LocalDate startDate, LocalDate endDate, Long storeId) {
-        List<AllOperationsDTO> allOperations = new ArrayList<>();
-
-        closingDepositRepository.findByDepositDateBetweenAndStoreId(startDate, endDate, storeId)
-                .stream()
-                .map(AllOperationsDTO::fromClosingDeposit)
-                .forEach(allOperations::add);
-
-        supplierPaymentRepository.findByPaymentDateBetweenAndStoreId(startDate, endDate, storeId)
-                .stream()
-                .map(AllOperationsDTO::fromSupplierPayment)
-                .forEach(allOperations::add);
-
-        salaryPaymentRepository.findBySalaryDateBetweenAndStoreId(startDate, endDate, storeId)
-                .stream()
-                .map(AllOperationsDTO::fromSalaryPayment)
-                .forEach(allOperations::add);
-
-        allOperations.sort((o1, o2) -> {
-            if (o1.getDate() == null) return 1;
-            if (o2.getDate() == null) return -1;
-            return o2.getDate().compareTo(o1.getDate());
-        });
-
-        return allOperations;
-    }
-
-    // Métodos para guardar operaciones
-    public ClosingDeposit saveClosingDeposit(ClosingDeposit deposit) {
-        if (deposit.getDepositDate() == null) {
-            deposit.setDepositDate(LocalDate.now());
-        }
-        return closingDepositRepository.save(deposit);
-    }
-
-    public List<ClosingDeposit> getClosingDeposits(LocalDate startDate, LocalDate endDate) {
-        return closingDepositRepository.findByDepositDateBetweenOrderByDepositDateDesc(startDate, endDate);
-    }
-
-    public List<ClosingDeposit> getAllClosingDeposits() {
-        return closingDepositRepository.findAllOrderByDepositDateDesc();
-    }
-
-
-
-    public SupplierPayment saveSupplierPayment(SupplierPayment payment) {
-        if (payment.getPaymentDate() == null) {
-            payment.setPaymentDate(LocalDate.now());
-        }
-        return supplierPaymentRepository.save(payment);
-    }
-
-    public List<SupplierPayment> getSupplierPayments(LocalDate startDate, LocalDate endDate) {
-        return supplierPaymentRepository.findByPaymentDateBetweenOrderByPaymentDateDesc(startDate, endDate);
-    }
-
-    public List<SupplierPayment> getAllSupplierPayments() {
-        return supplierPaymentRepository.findAllOrderByPaymentDateDesc();
-    }
-
-    public SalaryPayment saveSalaryPayment(SalaryPayment payment) {
-        if (payment.getSalaryDate() == null) {
-            payment.setSalaryDate(LocalDate.now());
-        }
-        return salaryPaymentRepository.save(payment);
-    }
-
-    public List<SalaryPayment> getAllSalaryPayments() {
-        return salaryPaymentRepository.findAllOrderBySalaryDateDesc();
-    }
-
-    // 🔍 Filtro por store ID
-    public List<ClosingDeposit> findByStoreId(Long storeId) {
-        return closingDepositRepository.findByStoreId(storeId);
-    }
-
-
-
-    // Métodos de actualización (PUT)
-    public ClosingDeposit updateClosingDeposit(Long id, ClosingDeposit updatedDeposit) {
-        ClosingDeposit existingDeposit = closingDepositRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ClosingDeposit no encontrado con id " + id));
-        existingDeposit.setAmount(updatedDeposit.getAmount());
-        existingDeposit.setUsername(updatedDeposit.getUsername());
-        
-        if (updatedDeposit.getClosingsCount() != null) {
-            existingDeposit.setClosingsCount(updatedDeposit.getClosingsCount());
-        }
-        
-        if (updatedDeposit.getPeriodStart() != null) {
-            existingDeposit.setPeriodStart(updatedDeposit.getPeriodStart());
-        }
-        
-        if (updatedDeposit.getPeriodEnd() != null) {
-            existingDeposit.setPeriodEnd(updatedDeposit.getPeriodEnd());
-        }
-        
-        if (updatedDeposit.getDepositDate() != null) {
-            existingDeposit.setDepositDate(updatedDeposit.getDepositDate());
-        }
-        if (updatedDeposit.getStore() != null) {
-            existingDeposit.setStore(updatedDeposit.getStore());
-        }
-        return closingDepositRepository.save(existingDeposit);
-    }
-
-    public SupplierPayment updateSupplierPayment(Long id, SupplierPayment updatedPayment) {
-        SupplierPayment existingPayment = supplierPaymentRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "SupplierPayment no encontrado con id " + id));
-        existingPayment.setAmount(updatedPayment.getAmount());
-        if (updatedPayment.getDescription() != null)   existingPayment.setDescription(updatedPayment.getDescription());
-        if (updatedPayment.getUsername()    != null)   existingPayment.setUsername(updatedPayment.getUsername());
-        if (updatedPayment.getSupplier()    != null)   existingPayment.setSupplier(updatedPayment.getSupplier());
-        if (updatedPayment.getPaymentDate() != null)   existingPayment.setPaymentDate(updatedPayment.getPaymentDate());
-        if (updatedPayment.getStore()       != null)   existingPayment.setStore(updatedPayment.getStore());
-        return supplierPaymentRepository.save(existingPayment);
-    }
-
-    public SalaryPayment updateSalaryPayment(Long id, SalaryPayment updatedPayment) {
-        SalaryPayment existingPayment = salaryPaymentRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "SalaryPayment no encontrado con id " + id));
-        existingPayment.setAmount(updatedPayment.getAmount());
-        if (updatedPayment.getDescription() != null) existingPayment.setDescription(updatedPayment.getDescription());
-        if (updatedPayment.getUsername()    != null) existingPayment.setUsername(updatedPayment.getUsername());
-        if (updatedPayment.getSalaryDate()  != null) existingPayment.setSalaryDate(updatedPayment.getSalaryDate());
-        if (updatedPayment.getStore()       != null) existingPayment.setStore(updatedPayment.getStore());
-        return salaryPaymentRepository.save(existingPayment);
-    }
-
-    // Métodos de eliminación (DELETE)
-    public void deleteClosingDeposit(Long id) {
-        if (!closingDepositRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ClosingDeposit no encontrado con id " + id);
-        }
-        closingDepositRepository.deleteById(id);
-    }
-
-    public void deleteSupplierPayment(Long id) {
-        if (!supplierPaymentRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "SupplierPayment no encontrado con id " + id);
-        }
-        supplierPaymentRepository.deleteById(id);
-    }
-
-    public void deleteSalaryPayment(Long id) {
-        if (!salaryPaymentRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "SalaryPayment no encontrado con id " + id);
-        }
-        salaryPaymentRepository.deleteById(id);
-    }
-
-    public List<AllOperationsDTO> getOperationsByUsername(String username) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
         List<AllOperationsDTO> result = new ArrayList<>();
-        closingDepositRepository.findByUsernameOrderByDepositDateDesc(username)
+        closingDepositRepository.findByTenantIdOrderByDepositDateDesc(tenantId)
                 .stream().map(AllOperationsDTO::fromClosingDeposit).forEach(result::add);
-        supplierPaymentRepository.findByUsernameOrderByPaymentDateDesc(username)
+        supplierPaymentRepository.findByTenantIdOrderByPaymentDateDesc(tenantId)
                 .stream().map(AllOperationsDTO::fromSupplierPayment).forEach(result::add);
-        salaryPaymentRepository.findByUsernameOrderBySalaryDateDesc(username)
+        salaryPaymentRepository.findByTenantIdOrderBySalaryDateDesc(tenantId)
                 .stream().map(AllOperationsDTO::fromSalaryPayment).forEach(result::add);
         result.sort((a, b) -> {
             if (a.getDate() == null) return 1;
@@ -306,15 +47,218 @@ public class FormsService {
         return result;
     }
 
+    public List<AllOperationsDTO> getOperationsByDateRange(LocalDate startDate, LocalDate endDate) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        List<AllOperationsDTO> result = new ArrayList<>();
+        closingDepositRepository.findByTenantIdAndDateRange(tenantId, startDate, endDate)
+                .stream().map(AllOperationsDTO::fromClosingDeposit).forEach(result::add);
+        supplierPaymentRepository.findByTenantIdAndDateRange(tenantId, startDate, endDate)
+                .stream().map(AllOperationsDTO::fromSupplierPayment).forEach(result::add);
+        salaryPaymentRepository.findByTenantIdAndDateRange(tenantId, startDate, endDate)
+                .stream().map(AllOperationsDTO::fromSalaryPayment).forEach(result::add);
+        result.sort((a, b) -> {
+            if (a.getDate() == null) return 1;
+            if (b.getDate() == null) return -1;
+            return b.getDate().compareTo(a.getDate());
+        });
+        return result;
+    }
+
+    public List<AllOperationsDTO> getOperationsByStore(Long storeId) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
+        List<AllOperationsDTO> result = new ArrayList<>();
+        closingDepositRepository.findByStoreIdAndTenantIdOrderByDepositDateDesc(storeId, tenantId)
+                .stream().map(AllOperationsDTO::fromClosingDeposit).forEach(result::add);
+        supplierPaymentRepository.findByStoreIdAndTenantIdOrderByPaymentDateDesc(storeId, tenantId)
+                .stream().map(AllOperationsDTO::fromSupplierPayment).forEach(result::add);
+        salaryPaymentRepository.findByStoreIdAndTenantIdOrderBySalaryDateDesc(storeId, tenantId)
+                .stream().map(AllOperationsDTO::fromSalaryPayment).forEach(result::add);
+        result.sort((a, b) -> {
+            if (a.getDate() == null) return 1;
+            if (b.getDate() == null) return -1;
+            return b.getDate().compareTo(a.getDate());
+        });
+        return result;
+    }
+
+    public List<AllOperationsDTO> getOperationsByDateRangeAndStore(
+            LocalDate startDate, LocalDate endDate, Long storeId) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
+        List<AllOperationsDTO> result = new ArrayList<>();
+        closingDepositRepository.findByStoreIdAndTenantIdAndDateRange(storeId, tenantId, startDate, endDate)
+                .stream().map(AllOperationsDTO::fromClosingDeposit).forEach(result::add);
+        supplierPaymentRepository.findByStoreIdAndTenantIdAndDateRange(storeId, tenantId, startDate, endDate)
+                .stream().map(AllOperationsDTO::fromSupplierPayment).forEach(result::add);
+        salaryPaymentRepository.findByStoreIdAndTenantIdAndDateRange(storeId, tenantId, startDate, endDate)
+                .stream().map(AllOperationsDTO::fromSalaryPayment).forEach(result::add);
+        result.sort((a, b) -> {
+            if (a.getDate() == null) return 1;
+            if (b.getDate() == null) return -1;
+            return b.getDate().compareTo(a.getDate());
+        });
+        return result;
+    }
+
+    public List<AllOperationsDTO> getOperationsByUsername(String username) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        List<AllOperationsDTO> result = new ArrayList<>();
+        closingDepositRepository.findByUsernameAndTenantIdOrderByDepositDateDesc(username, tenantId)
+                .stream().map(AllOperationsDTO::fromClosingDeposit).forEach(result::add);
+        supplierPaymentRepository.findByUsernameAndTenantIdOrderByPaymentDateDesc(username, tenantId)
+                .stream().map(AllOperationsDTO::fromSupplierPayment).forEach(result::add);
+        salaryPaymentRepository.findByUsernameAndTenantIdOrderBySalaryDateDesc(username, tenantId)
+                .stream().map(AllOperationsDTO::fromSalaryPayment).forEach(result::add);
+        result.sort((a, b) -> {
+            if (a.getDate() == null) return 1;
+            if (b.getDate() == null) return -1;
+            return b.getDate().compareTo(a.getDate());
+        });
+        return result;
+    }
+
+    // ── ClosingDeposit ────────────────────────────────────────────────────
+
+    /** Usado internamente por SalesService — el tenantId ya viene seteado en el objeto. */
+    public ClosingDeposit saveClosingDeposit(ClosingDeposit deposit) {
+        if (deposit.getDepositDate() == null) deposit.setDepositDate(LocalDate.now());
+        return closingDepositRepository.save(deposit);
+    }
+
+    public List<ClosingDeposit> getAllClosingDeposits() {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        return closingDepositRepository.findByTenantIdOrderByDepositDateDesc(tenantId);
+    }
+
+    public List<ClosingDeposit> getClosingDeposits(LocalDate startDate, LocalDate endDate) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        return closingDepositRepository.findByTenantIdAndDateRange(tenantId, startDate, endDate);
+    }
+
+    public List<ClosingDeposit> findByStoreId(Long storeId) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
+        return closingDepositRepository.findByStoreIdAndTenantIdOrderByDepositDateDesc(storeId, tenantId);
+    }
+
+    public ClosingDeposit updateClosingDeposit(Long id, ClosingDeposit updatedDeposit) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        ClosingDeposit existing = closingDepositRepository.findByIdAndTenantId(id, tenantId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "ClosingDeposit no encontrado con id " + id));
+        existing.setAmount(updatedDeposit.getAmount());
+        existing.setUsername(updatedDeposit.getUsername());
+        if (updatedDeposit.getClosingsCount() != null) existing.setClosingsCount(updatedDeposit.getClosingsCount());
+        if (updatedDeposit.getPeriodStart()   != null) existing.setPeriodStart(updatedDeposit.getPeriodStart());
+        if (updatedDeposit.getPeriodEnd()     != null) existing.setPeriodEnd(updatedDeposit.getPeriodEnd());
+        if (updatedDeposit.getDepositDate()   != null) existing.setDepositDate(updatedDeposit.getDepositDate());
+        if (updatedDeposit.getStore()         != null) {
+            TenantSecurityUtils.requireStore(updatedDeposit.getStore().getId(), tenantId, storeRepository);
+            existing.setStore(updatedDeposit.getStore());
+        }
+        return closingDepositRepository.save(existing);
+    }
+
+    public void deleteClosingDeposit(Long id) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        closingDepositRepository.findByIdAndTenantId(id, tenantId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "ClosingDeposit no encontrado con id " + id));
+        closingDepositRepository.deleteById(id);
+    }
+
+    // ── SupplierPayment ───────────────────────────────────────────────────
+
+    public SupplierPayment saveSupplierPayment(SupplierPayment payment) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        if (payment.getPaymentDate() == null) payment.setPaymentDate(LocalDate.now());
+        payment.setTenantId(tenantId);
+        return supplierPaymentRepository.save(payment);
+    }
+
+    public List<SupplierPayment> getAllSupplierPayments() {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        return supplierPaymentRepository.findByTenantIdOrderByPaymentDateDesc(tenantId);
+    }
+
+    public List<SupplierPayment> getSupplierPayments(LocalDate startDate, LocalDate endDate) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        return supplierPaymentRepository.findByTenantIdAndDateRange(tenantId, startDate, endDate);
+    }
+
+    public SupplierPayment updateSupplierPayment(Long id, SupplierPayment updatedPayment) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        SupplierPayment existing = supplierPaymentRepository.findByIdAndTenantId(id, tenantId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "SupplierPayment no encontrado con id " + id));
+        existing.setAmount(updatedPayment.getAmount());
+        if (updatedPayment.getDescription() != null) existing.setDescription(updatedPayment.getDescription());
+        if (updatedPayment.getUsername()    != null) existing.setUsername(updatedPayment.getUsername());
+        if (updatedPayment.getSupplier()    != null) existing.setSupplier(updatedPayment.getSupplier());
+        if (updatedPayment.getPaymentDate() != null) existing.setPaymentDate(updatedPayment.getPaymentDate());
+        if (updatedPayment.getStore()       != null) {
+            TenantSecurityUtils.requireStore(updatedPayment.getStore().getId(), tenantId, storeRepository);
+            existing.setStore(updatedPayment.getStore());
+        }
+        return supplierPaymentRepository.save(existing);
+    }
+
+    public void deleteSupplierPayment(Long id) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        supplierPaymentRepository.findByIdAndTenantId(id, tenantId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "SupplierPayment no encontrado con id " + id));
+        supplierPaymentRepository.deleteById(id);
+    }
+
+    // ── SalaryPayment ─────────────────────────────────────────────────────
+
+    public SalaryPayment saveSalaryPayment(SalaryPayment payment) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        if (payment.getSalaryDate() == null) payment.setSalaryDate(LocalDate.now());
+        payment.setTenantId(tenantId);
+        return salaryPaymentRepository.save(payment);
+    }
+
+    public List<SalaryPayment> getAllSalaryPayments() {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        return salaryPaymentRepository.findByTenantIdOrderBySalaryDateDesc(tenantId);
+    }
+
+    public SalaryPayment updateSalaryPayment(Long id, SalaryPayment updatedPayment) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        SalaryPayment existing = salaryPaymentRepository.findByIdAndTenantId(id, tenantId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "SalaryPayment no encontrado con id " + id));
+        existing.setAmount(updatedPayment.getAmount());
+        if (updatedPayment.getDescription() != null) existing.setDescription(updatedPayment.getDescription());
+        if (updatedPayment.getUsername()    != null) existing.setUsername(updatedPayment.getUsername());
+        if (updatedPayment.getSalaryDate()  != null) existing.setSalaryDate(updatedPayment.getSalaryDate());
+        if (updatedPayment.getStore()       != null) {
+            TenantSecurityUtils.requireStore(updatedPayment.getStore().getId(), tenantId, storeRepository);
+            existing.setStore(updatedPayment.getStore());
+        }
+        return salaryPaymentRepository.save(existing);
+    }
+
+    public void deleteSalaryPayment(Long id) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        salaryPaymentRepository.findByIdAndTenantId(id, tenantId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "SalaryPayment no encontrado con id " + id));
+        salaryPaymentRepository.deleteById(id);
+    }
+
+    // ── GastoAdmin ────────────────────────────────────────────────────────
+
     public GastoAdminResponseDTO saveGastoAdmin(GastoAdminRequestDTO request) {
-        // Validar que los porcentajes sumen exactamente 100%
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+
         if (!request.isValidPercentages()) {
             throw new IllegalArgumentException("Los porcentajes deben sumar exactamente 100%");
         }
 
-        // 1. Guardar registro en tabla gasto_admin para auditoría
-        // Los campos legacy porcentajeDanli/Paraiso y montoDanli/Paraiso se guardan
-        // como 0 ya que en V2 la distribución real vive en las transacciones individuales
         GastoAdmin gastoAdmin = new GastoAdmin();
         gastoAdmin.setFecha(request.getFecha());
         gastoAdmin.setMonto(request.getMonto());
@@ -324,16 +268,13 @@ public class FormsService {
         gastoAdmin.setPorcentajeParaiso(0);
         gastoAdmin.setMontoDanli(BigDecimal.ZERO);
         gastoAdmin.setMontoParaiso(BigDecimal.ZERO);
+        gastoAdmin.setTenantId(tenantId);
         GastoAdmin gastoAdminSaved = gastoAdminRepository.save(gastoAdmin);
 
-        // 2. Crear una transacción por cada local en la distribución
         List<GastoAdminResponseDTO.TransaccionCreada> transaccionesCreadas = new ArrayList<>();
 
         for (GastoAdminRequestDTO.StoreDistribucion dist : request.getDistribuciones()) {
-            Store store = storeRepository.findById(dist.getStoreId())
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "Local no encontrado con id: " + dist.getStoreId()));
-
+            Store store = TenantSecurityUtils.requireStore(dist.getStoreId(), tenantId, storeRepository);
             BigDecimal montoLocal = calcularMonto(request.getMonto(), dist.getPorcentaje());
 
             Transaction tx = new Transaction();
@@ -344,93 +285,65 @@ public class FormsService {
                     request.getDescripcion(), store.getName(), dist.getPorcentaje()));
             tx.setStore(store);
             tx.setGastoAdminId(gastoAdminSaved.getId());
-
+            tx.setTenantId(tenantId);
             Transaction saved = transactionRepository.save(tx);
 
             transaccionesCreadas.add(new GastoAdminResponseDTO.TransaccionCreada(
-                    saved.getId(),
-                    saved.getType(),
-                    saved.getAmount(),
-                    saved.getDate(),
-                    saved.getDescription(),
-                    store.getName(),
-                    dist.getPorcentaje()
-            ));
+                    saved.getId(), saved.getType(), saved.getAmount(),
+                    saved.getDate(), saved.getDescription(),
+                    store.getName(), dist.getPorcentaje()));
         }
 
-        // 3. Construir respuesta
         return new GastoAdminResponseDTO(
                 "Gasto administrativo creado exitosamente. Se crearon " + transaccionesCreadas.size() + " transacciones.",
-                transaccionesCreadas.size(),
-                request.getMonto(),
-                transaccionesCreadas,
-                gastoAdminSaved.getId()
-        );
+                transaccionesCreadas.size(), request.getMonto(), transaccionesCreadas, gastoAdminSaved.getId());
     }
 
     public List<GastoAdmin> getAllGastosAdmin() {
-        return gastoAdminRepository.findAll();
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        return gastoAdminRepository.findByTenantIdOrderByFechaDesc(tenantId);
     }
-
 
     public List<GastoAdmin> getGastosAdmin(LocalDate startDate, LocalDate endDate) {
-        return gastoAdminRepository.findByFechaBetween(startDate, endDate);
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        return gastoAdminRepository.findByTenantIdAndDateRange(tenantId, startDate, endDate);
     }
-
 
     public GastoAdmin updateGastoAdmin(Long id, GastoAdmin updatedGastoAdmin) {
-        GastoAdmin existingGastoAdmin = gastoAdminRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, 
-                    "GastoAdmin no encontrado con id " + id));
-        
-        // Actualizar campos básicos
-        if (updatedGastoAdmin.getMonto() != null) {
-            existingGastoAdmin.setMonto(updatedGastoAdmin.getMonto());
-        }
-        
-        if (updatedGastoAdmin.getDescripcion() != null) {
-            existingGastoAdmin.setDescripcion(updatedGastoAdmin.getDescripcion());
-        }
-        
-        if (updatedGastoAdmin.getFecha() != null) {
-            existingGastoAdmin.setFecha(updatedGastoAdmin.getFecha());
-        }
-        
-        if (updatedGastoAdmin.getUsername() != null) {
-            existingGastoAdmin.setUsername(updatedGastoAdmin.getUsername());
-        }
-        
-        GastoAdmin saved = gastoAdminRepository.save(existingGastoAdmin);
-        return saved;
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        GastoAdmin existing = gastoAdminRepository.findByIdAndTenantId(id, tenantId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "GastoAdmin no encontrado con id " + id));
+        if (updatedGastoAdmin.getMonto()      != null) existing.setMonto(updatedGastoAdmin.getMonto());
+        if (updatedGastoAdmin.getDescripcion()!= null) existing.setDescripcion(updatedGastoAdmin.getDescripcion());
+        if (updatedGastoAdmin.getFecha()      != null) existing.setFecha(updatedGastoAdmin.getFecha());
+        if (updatedGastoAdmin.getUsername()   != null) existing.setUsername(updatedGastoAdmin.getUsername());
+        return gastoAdminRepository.save(existing);
     }
 
-    @org.springframework.transaction.annotation.Transactional
+    @Transactional
     public GastoAdminResponseDTO updateGastoAdminV2(Long id, GastoAdminRequestDTO request) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+
         if (!request.isValidPercentages()) {
             throw new IllegalArgumentException("Los porcentajes deben sumar exactamente 100%");
         }
 
-        GastoAdmin existing = gastoAdminRepository.findById(id)
+        GastoAdmin existing = gastoAdminRepository.findByIdAndTenantId(id, tenantId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "GastoAdmin no encontrado con id " + id));
 
-        // 1. Eliminar transacciones derivadas anteriores
         transactionRepository.deleteByGastoAdminId(id);
 
-        // 2. Actualizar el registro principal
         existing.setFecha(request.getFecha());
         existing.setMonto(request.getMonto());
         existing.setDescripcion(request.getDescripcion());
         gastoAdminRepository.save(existing);
 
-        // 3. Crear nuevas transacciones con la nueva distribución
         List<GastoAdminResponseDTO.TransaccionCreada> transaccionesCreadas = new ArrayList<>();
 
         for (GastoAdminRequestDTO.StoreDistribucion dist : request.getDistribuciones()) {
-            Store store = storeRepository.findById(dist.getStoreId())
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "Local no encontrado con id: " + dist.getStoreId()));
-
+            Store store = TenantSecurityUtils.requireStore(dist.getStoreId(), tenantId, storeRepository);
             BigDecimal montoLocal = calcularMonto(request.getMonto(), dist.getPorcentaje());
 
             Transaction tx = new Transaction();
@@ -441,35 +354,31 @@ public class FormsService {
                     request.getDescripcion(), store.getName(), dist.getPorcentaje()));
             tx.setStore(store);
             tx.setGastoAdminId(id);
-
+            tx.setTenantId(tenantId);
             Transaction saved = transactionRepository.save(tx);
 
             transaccionesCreadas.add(new GastoAdminResponseDTO.TransaccionCreada(
                     saved.getId(), saved.getType(), saved.getAmount(),
                     saved.getDate(), saved.getDescription(),
-                    store.getName(), dist.getPorcentaje()
-            ));
+                    store.getName(), dist.getPorcentaje()));
         }
 
         return new GastoAdminResponseDTO(
                 "Gasto administrativo actualizado. Se recrearon " + transaccionesCreadas.size() + " transacciones.",
-                transaccionesCreadas.size(),
-                request.getMonto(),
-                transaccionesCreadas,
-                id
-        );
+                transaccionesCreadas.size(), request.getMonto(), transaccionesCreadas, id);
     }
 
     public void deleteGastoAdmin(Long id) {
-        if (!gastoAdminRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, 
-                "GastoAdmin no encontrado con id " + id);
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        if (!gastoAdminRepository.existsByIdAndTenantId(id, tenantId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "GastoAdmin no encontrado con id " + id);
         }
         gastoAdminRepository.deleteById(id);
     }
 
     private BigDecimal calcularMonto(BigDecimal montoTotal, Integer porcentaje) {
         return montoTotal.multiply(BigDecimal.valueOf(porcentaje))
-                        .divide(BigDecimal.valueOf(100), 2, BigDecimal.ROUND_HALF_UP);
+                .divide(BigDecimal.valueOf(100), 2, BigDecimal.ROUND_HALF_UP);
     }
 }

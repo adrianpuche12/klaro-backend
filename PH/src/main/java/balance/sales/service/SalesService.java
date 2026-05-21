@@ -14,6 +14,7 @@ import balance.sales.model.Shift;
 import balance.sales.repository.SaleRepository;
 import balance.sales.repository.ShiftRepository;
 import balance.service.FormsService;
+import balance.tenant.context.TenantSecurityUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,13 +22,13 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 public class SalesService {
 
-    // ISV deshabilitado por solicitud del cliente (no cobra impuesto desglosado)
+    private static final ZoneId HONDURAS_TZ = ZoneId.of("America/Tegucigalpa");
     private static final BigDecimal ISV_RATE = BigDecimal.ZERO;
 
     @Autowired private SaleRepository saleRepository;
@@ -37,17 +38,11 @@ public class SalesService {
     @Autowired private InventoryService inventoryService;
     @Autowired private FormsService formsService;
 
-    // ── Crear venta ──────────────────────────────────────────────────────────
-
-    /**
-     * Registra una venta dentro de un turno abierto.
-     * Calcula ISV 15%, guarda snapshot de precio de cada ítem y descuenta stock.
-     * @throws IllegalArgumentException si el turno o algún producto no existe
-     * @throws IllegalStateException    si el turno ya está cerrado
-     */
     @Transactional
     public SaleResponseDTO createSale(Long shiftId, SaleRequestDTO request) {
-        Shift shift = shiftRepository.findById(shiftId)
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+
+        Shift shift = shiftRepository.findByIdAndTenantId(shiftId, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
 
         if ("CLOSED".equals(shift.getStatus())) {
@@ -60,14 +55,17 @@ public class SalesService {
         sale.setShift(shift);
         sale.setStore(store);
         sale.setUsername(request.getUsername());
-        sale.setSaleDate(LocalDate.now());
+        sale.setSaleDate(LocalDate.now(HONDURAS_TZ));
         sale.setStatus("OPEN");
+        sale.setTenantId(tenantId);
 
         BigDecimal subtotal = BigDecimal.ZERO;
 
         for (SaleItemRequestDTO itemReq : request.getItems()) {
             Product product = productRepository.findById(itemReq.getProductId())
-                    .orElseThrow(() -> new IllegalArgumentException("Producto no encontrado: " + itemReq.getProductId()));
+                    .filter(p -> tenantId.equals(p.getTenantId()))
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Producto no encontrado: " + itemReq.getProductId()));
 
             if (!Boolean.TRUE.equals(product.getActive())) {
                 throw new IllegalArgumentException("Producto inactivo: " + product.getName());
@@ -91,78 +89,157 @@ public class SalesService {
 
         BigDecimal isv   = subtotal.multiply(ISV_RATE).setScale(2, RoundingMode.HALF_UP);
         BigDecimal total = subtotal.add(isv);
-
         sale.setSubtotal(subtotal);
         sale.setIsv(isv);
         sale.setTotal(total);
 
+        String paymentMethod = request.getPaymentMethod() != null ? request.getPaymentMethod() : "CASH";
+        sale.setPaymentMethod(paymentMethod);
+        switch (paymentMethod) {
+            case "CARD":
+                sale.setCashAmount(BigDecimal.ZERO);
+                sale.setCardAmount(total);
+                break;
+            case "MIXED":
+                BigDecimal cash = request.getCashAmount() != null ? request.getCashAmount() : BigDecimal.ZERO;
+                BigDecimal card = request.getCardAmount() != null ? request.getCardAmount() : BigDecimal.ZERO;
+                sale.setCashAmount(cash);
+                sale.setCardAmount(card);
+                break;
+            default:
+                sale.setCashAmount(total);
+                sale.setCardAmount(BigDecimal.ZERO);
+                break;
+        }
+
         saleRepository.save(sale);
-
-        // Descontar stock de cada producto vendido
         deductStock(store.getId(), sale.getItems());
-
         return SaleResponseDTO.from(sale);
     }
 
-    // ── Cancelar venta ───────────────────────────────────────────────────────
-
-    /**
-     * Cancela una venta con status OPEN y revierte el stock descontado.
-     * No se puede cancelar una venta ya CONFIRMED (incluida en cierre).
-     */
     @Transactional
     public void cancelSale(Long saleId) {
-        Sale sale = saleRepository.findById(saleId)
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        Sale sale = saleRepository.findByIdAndTenantId(saleId, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Venta no encontrada"));
 
         if ("CONFIRMED".equals(sale.getStatus())) {
             throw new IllegalStateException("No se puede cancelar una venta ya confirmada");
         }
-
-        // Revertir stock
         revertStock(sale.getStore().getId(), sale.getItems());
-
         saleRepository.delete(sale);
     }
 
-    // ── Consultas ─────────────────────────────────────────────────────────────
-
     public List<SaleResponseDTO> getSalesByShift(Long shiftId) {
-        return saleRepository.findByShiftIdOrderByCreatedAtDesc(shiftId)
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        shiftRepository.findByIdAndTenantId(shiftId, tenantId)
+                .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
+        return saleRepository.findByShiftIdAndTenantIdOrderByCreatedAtDesc(shiftId, tenantId)
                 .stream().map(SaleResponseDTO::from).toList();
     }
 
     public SaleResponseDTO getSaleById(Long saleId) {
-        return saleRepository.findById(saleId)
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        return saleRepository.findByIdAndTenantId(saleId, tenantId)
                 .map(SaleResponseDTO::from)
                 .orElseThrow(() -> new IllegalArgumentException("Venta no encontrada"));
     }
 
-    // ── Ventas por local (admin) ───────────────────────────────────────────────
-
     public List<SaleResponseDTO> getSalesByStore(Long storeId, LocalDate from, LocalDate to) {
-        return saleRepository.findByStoreIdAndDateRange(storeId, from, to)
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
+        return saleRepository.findByStoreIdAndTenantIdAndDateRange(storeId, tenantId, from, to)
                 .stream().map(SaleResponseDTO::from).toList();
     }
 
     public DailySummaryDTO getSummaryByStore(Long storeId, LocalDate from, LocalDate to) {
-        Store store = storeRepository.findById(storeId)
-                .orElseThrow(() -> new IllegalArgumentException("Local no encontrado"));
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        Store store = TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
+        List<Sale> sales = saleRepository.findByStoreIdAndTenantIdAndDateRange(storeId, tenantId, from, to);
+        return buildSummary(sales, store, from != null ? from : LocalDate.now(HONDURAS_TZ));
+    }
 
-        List<Sale> sales = saleRepository.findByStoreIdAndDateRange(storeId, from, to);
+    public DailySummaryDTO getDailySummary(Long shiftId) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        Shift shift = shiftRepository.findByIdAndTenantId(shiftId, tenantId)
+                .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
+        List<Sale> sales = saleRepository.findByShiftIdAndTenantIdOrderByCreatedAtDesc(shiftId, tenantId);
+        return buildSummary(sales, shift.getStore(), LocalDate.now(HONDURAS_TZ));
+    }
 
+    public Map<String, Object> getCashSummary(Long storeId, LocalDate from, LocalDate to) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
+        List<Sale> sales = saleRepository.findByStoreIdAndTenantIdAndDateRangeStrict(storeId, tenantId, from, to);
+        BigDecimal totalCash  = sales.stream().map(Sale::getCashAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalCard  = sales.stream().map(Sale::getCardAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalSales = sales.stream().map(Sale::getTotal).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return Map.of("storeId", storeId, "from", from.toString(), "to", to.toString(),
+                "totalSales", totalSales, "totalCash", totalCash,
+                "totalCard", totalCard, "saleCount", sales.size());
+    }
+
+    @Transactional
+    public DailyClosingResponseDTO closeShift(Long shiftId, String username) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        Shift shift = shiftRepository.findByIdAndTenantId(shiftId, tenantId)
+                .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
+
+        if ("CLOSED".equals(shift.getStatus())) {
+            throw new IllegalStateException("El turno ya está cerrado");
+        }
+
+        List<Sale> openSales = saleRepository.findOpenByShiftIdAndTenantId(shiftId, tenantId);
+        if (openSales.isEmpty()) {
+            throw new IllegalStateException("No hay ventas abiertas para cerrar en este turno");
+        }
+
+        BigDecimal totalAmount = openSales.stream()
+                .map(Sale::getTotal).reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        ClosingDeposit deposit = new ClosingDeposit();
+        deposit.setAmount(totalAmount);
+        deposit.setClosingsCount(openSales.size());
+        deposit.setDepositDate(LocalDate.now(HONDURAS_TZ));
+        deposit.setPeriodStart(LocalDate.now(HONDURAS_TZ));
+        deposit.setPeriodEnd(LocalDate.now(HONDURAS_TZ));
+        deposit.setUsername(username);
+        deposit.setStore(shift.getStore());
+        deposit.setTenantId(tenantId);
+        ClosingDeposit saved = formsService.saveClosingDeposit(deposit);
+
+        openSales.forEach(sale -> {
+            sale.setStatus("CONFIRMED");
+            saleRepository.save(sale);
+        });
+
+        shift.setStatus("CLOSED");
+        shift.setClosedAt(java.time.LocalDateTime.now());
+        shiftRepository.save(shift);
+
+        return new DailyClosingResponseDTO(
+                shift.getId(), shift.getCode(), LocalDate.now(HONDURAS_TZ),
+                shift.getStore().getId(), shift.getStore().getName(),
+                openSales.size(), totalAmount, saved.getId());
+    }
+
+    private DailySummaryDTO buildSummary(List<Sale> sales, Store store, LocalDate date) {
         BigDecimal totalSubtotal = BigDecimal.ZERO;
         BigDecimal totalIsv      = BigDecimal.ZERO;
         BigDecimal totalAmount   = BigDecimal.ZERO;
+        BigDecimal totalCash     = BigDecimal.ZERO;
+        BigDecimal totalCard     = BigDecimal.ZERO;
 
-        Map<String, int[]>        productQty = new LinkedHashMap<>();
-        Map<String, BigDecimal>   productSub = new LinkedHashMap<>();
-        Map<String, Long>         productIds = new LinkedHashMap<>();
+        Map<String, int[]>      productQty = new LinkedHashMap<>();
+        Map<String, BigDecimal> productSub = new LinkedHashMap<>();
+        Map<String, Long>       productIds = new LinkedHashMap<>();
 
         for (Sale sale : sales) {
             totalSubtotal = totalSubtotal.add(sale.getSubtotal());
             totalIsv      = totalIsv.add(sale.getIsv());
             totalAmount   = totalAmount.add(sale.getTotal());
+            totalCash     = totalCash.add(sale.getCashAmount());
+            totalCard     = totalCard.add(sale.getCardAmount());
             for (SaleItem item : sale.getItems()) {
                 String key = item.getProductNameSnapshot();
                 productQty.merge(key, new int[]{item.getQuantity()}, (a, b) -> new int[]{a[0] + b[0]});
@@ -178,124 +255,9 @@ public class SalesService {
                 .sorted(Comparator.comparing(DailySummaryDTO.ProductSummaryItem::getSubtotal).reversed())
                 .toList();
 
-        LocalDate rangeDate = from != null ? from : LocalDate.now();
-        return new DailySummaryDTO(rangeDate, store.getId(), store.getName(),
-                sales.size(), totalSubtotal, totalIsv, totalAmount, summary);
+        return new DailySummaryDTO(date, store.getId(), store.getName(),
+                sales.size(), totalSubtotal, totalIsv, totalAmount, totalCash, totalCard, summary);
     }
-
-    // ── Resumen diario ────────────────────────────────────────────────────────
-
-    public DailySummaryDTO getDailySummary(Long shiftId) {
-        Shift shift = shiftRepository.findById(shiftId)
-                .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
-
-        // Muestra todas las ventas del turno (OPEN o CONFIRMED) para permitir
-        // consultar el resumen incluso después del cierre
-        List<Sale> openSales = saleRepository.findByShiftIdOrderByCreatedAtDesc(shiftId);
-
-        BigDecimal totalSubtotal = BigDecimal.ZERO;
-        BigDecimal totalIsv      = BigDecimal.ZERO;
-        BigDecimal totalAmount   = BigDecimal.ZERO;
-
-        Map<String, int[]> productQty       = new LinkedHashMap<>();
-        Map<String, BigDecimal> productSub  = new LinkedHashMap<>();
-        Map<String, Long> productIds        = new LinkedHashMap<>();
-
-        for (Sale sale : openSales) {
-            totalSubtotal = totalSubtotal.add(sale.getSubtotal());
-            totalIsv      = totalIsv.add(sale.getIsv());
-            totalAmount   = totalAmount.add(sale.getTotal());
-
-            for (SaleItem item : sale.getItems()) {
-                String key = item.getProductNameSnapshot();
-                productQty.merge(key, new int[]{item.getQuantity()}, (a, b) -> new int[]{a[0] + b[0]});
-                productSub.merge(key, item.getSubtotal(), BigDecimal::add);
-                if (item.getProduct() != null) productIds.putIfAbsent(key, item.getProduct().getId());
-            }
-        }
-
-        List<DailySummaryDTO.ProductSummaryItem> summary = productQty.entrySet().stream()
-                .map(e -> new DailySummaryDTO.ProductSummaryItem(
-                        productIds.get(e.getKey()),
-                        e.getKey(),
-                        e.getValue()[0],
-                        productSub.get(e.getKey())))
-                .sorted(Comparator.comparing(DailySummaryDTO.ProductSummaryItem::getSubtotal).reversed())
-                .toList();
-
-        return new DailySummaryDTO(
-                LocalDate.now(),
-                shift.getStore().getId(),
-                shift.getStore().getName(),
-                openSales.size(),
-                totalSubtotal,
-                totalIsv,
-                totalAmount,
-                summary
-        );
-    }
-
-    // ── Cierre de turno ───────────────────────────────────────────────────────
-
-    /**
-     * Cierra el turno: confirma todas las ventas OPEN, crea un ClosingDeposit
-     * en el sistema financiero V1 y registra la hora de cierre.
-     * @throws IllegalStateException si el turno ya está cerrado o no hay ventas
-     */
-    @Transactional
-    public DailyClosingResponseDTO closeShift(Long shiftId, String username) {
-        Shift shift = shiftRepository.findById(shiftId)
-                .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
-
-        if ("CLOSED".equals(shift.getStatus())) {
-            throw new IllegalStateException("El turno ya está cerrado");
-        }
-
-        List<Sale> openSales = saleRepository.findOpenByShiftId(shiftId);
-
-        if (openSales.isEmpty()) {
-            throw new IllegalStateException("No hay ventas abiertas para cerrar en este turno");
-        }
-
-        BigDecimal totalAmount = openSales.stream()
-                .map(Sale::getTotal)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        // Crear ClosingDeposit en sistema V1
-        ClosingDeposit deposit = new ClosingDeposit();
-        deposit.setAmount(totalAmount);
-        deposit.setClosingsCount(openSales.size());
-        deposit.setDepositDate(LocalDate.now());
-        deposit.setPeriodStart(LocalDate.now());
-        deposit.setPeriodEnd(LocalDate.now());
-        deposit.setUsername(username);
-        deposit.setStore(shift.getStore());
-        ClosingDeposit saved = formsService.saveClosingDeposit(deposit);
-
-        // Marcar ventas como CONFIRMED
-        openSales.forEach(sale -> {
-            sale.setStatus("CONFIRMED");
-            saleRepository.save(sale);
-        });
-
-        // Cerrar el turno y registrar hora de cierre
-        shift.setStatus("CLOSED");
-        shift.setClosedAt(java.time.LocalDateTime.now());
-        shiftRepository.save(shift);
-
-        return new DailyClosingResponseDTO(
-                shift.getId(),
-                shift.getCode(),
-                LocalDate.now(),
-                shift.getStore().getId(),
-                shift.getStore().getName(),
-                openSales.size(),
-                totalAmount,
-                saved.getId()
-        );
-    }
-
-    // ── Stock helpers ─────────────────────────────────────────────────────────
 
     private void deductStock(Long storeId, List<SaleItem> items) {
         for (SaleItem item : items) {
@@ -308,9 +270,7 @@ public class SalesService {
                 adj.setReason("Venta");
                 adj.setUsername("system");
                 inventoryService.adjustSilent(storeId, adj);
-            } catch (Exception ignored) {
-                // Stock insuficiente no bloquea la venta
-            }
+            } catch (Exception ignored) {}
         }
     }
 

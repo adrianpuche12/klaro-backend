@@ -20,6 +20,9 @@ public class Sale {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "tenant_id", nullable = false)
+    private Long tenantId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "shift_id", nullable = false)
     private Shift shift;
@@ -43,10 +46,19 @@ public class Sale {
     private BigDecimal subtotal = BigDecimal.ZERO;
 
     @Column(nullable = false, precision = 12, scale = 2)
-    private BigDecimal isv = BigDecimal.ZERO; // 15%
+    private BigDecimal isv = BigDecimal.ZERO;
 
     @Column(nullable = false, precision = 12, scale = 2)
-    private BigDecimal total = BigDecimal.ZERO; // subtotal + isv
+    private BigDecimal total = BigDecimal.ZERO;
+
+    @Column(length = 10)
+    private String paymentMethod = "CASH"; // CASH | CARD | MIXED
+
+    @Column(precision = 12, scale = 2)
+    private BigDecimal cashAmount = BigDecimal.ZERO;
+
+    @Column(precision = 12, scale = 2)
+    private BigDecimal cardAmount = BigDecimal.ZERO;
 
     @OneToMany(mappedBy = "sale", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<SaleItem> items = new ArrayList<>();
@@ -84,4 +96,16 @@ public class Sale {
     public List<SaleItem> getItems() { return items; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
+
+    public String getPaymentMethod() { return paymentMethod; }
+    public void setPaymentMethod(String paymentMethod) { this.paymentMethod = paymentMethod; }
+
+    public BigDecimal getCashAmount() { return cashAmount; }
+    public void setCashAmount(BigDecimal cashAmount) { this.cashAmount = cashAmount; }
+
+    public BigDecimal getCardAmount() { return cardAmount; }
+    public void setCardAmount(BigDecimal cardAmount) { this.cardAmount = cardAmount; }
+
+    public Long getTenantId() { return tenantId; }
+    public void setTenantId(Long tenantId) { this.tenantId = tenantId; }
 }

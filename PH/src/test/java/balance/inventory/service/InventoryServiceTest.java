@@ -11,6 +11,9 @@ import balance.inventory.repository.InventoryMovementRepository;
 import balance.inventory.repository.InventoryStockRepository;
 import balance.model.Store;
 import balance.repository.StoreRepository;
+import balance.tenant.context.TenantContext;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -19,7 +22,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
-import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
@@ -29,6 +31,8 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class InventoryServiceTest {
 
+    private static final Long TENANT_ID = 1L;
+
     @InjectMocks private InventoryService inventoryService;
 
     @Mock private InventoryStockRepository    stockRepository;
@@ -37,12 +41,23 @@ class InventoryServiceTest {
     @Mock private StoreRepository             storeRepository;
     @Mock private CategoryRepository          categoryRepository;
 
+    @BeforeEach
+    void setTenantContext() {
+        TenantContext.setTenantId(TENANT_ID);
+    }
+
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private Store buildStore(Long id) {
         Store s = new Store();
         s.setId(id);
         s.setName("Danli");
+        s.setTenantId(TENANT_ID);
         return s;
     }
 
@@ -53,6 +68,7 @@ class InventoryServiceTest {
         p.setPrice(new BigDecimal("100.00"));
         p.setMinStock(minStock);
         p.setActive(true);
+        p.setTenantId(TENANT_ID);
         return p;
     }
 
@@ -61,6 +77,7 @@ class InventoryServiceTest {
         stock.setProduct(p);
         stock.setStore(s);
         stock.setQuantity(qty);
+        stock.setTenantId(TENANT_ID);
         return stock;
     }
 
@@ -82,9 +99,9 @@ class InventoryServiceTest {
         Product product = buildProduct(1L, 5);
         InventoryStock stock = buildStock(product, store, 10);
 
-        when(storeRepository.findById(1L)).thenReturn(Optional.of(store));
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
         when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(stockRepository.findByProductIdAndStoreId(1L, 1L)).thenReturn(Optional.of(stock));
+        when(stockRepository.findByProductIdAndStoreIdAndTenantId(1L, 1L, TENANT_ID)).thenReturn(Optional.of(stock));
         when(stockRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         inventoryService.adjust(1L, buildAdj(1L, "ENTRADA", 5));
@@ -101,9 +118,9 @@ class InventoryServiceTest {
         Product product = buildProduct(1L, 0);
         InventoryStock stock = buildStock(product, store, 10);
 
-        when(storeRepository.findById(1L)).thenReturn(Optional.of(store));
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
         when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(stockRepository.findByProductIdAndStoreId(1L, 1L)).thenReturn(Optional.of(stock));
+        when(stockRepository.findByProductIdAndStoreIdAndTenantId(1L, 1L, TENANT_ID)).thenReturn(Optional.of(stock));
         when(stockRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         inventoryService.adjust(1L, buildAdj(1L, "SALIDA", 3));
@@ -117,9 +134,9 @@ class InventoryServiceTest {
         Product product = buildProduct(1L, 0);
         InventoryStock stock = buildStock(product, store, 2);
 
-        when(storeRepository.findById(1L)).thenReturn(Optional.of(store));
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
         when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(stockRepository.findByProductIdAndStoreId(1L, 1L)).thenReturn(Optional.of(stock));
+        when(stockRepository.findByProductIdAndStoreIdAndTenantId(1L, 1L, TENANT_ID)).thenReturn(Optional.of(stock));
 
         assertThatThrownBy(() -> inventoryService.adjust(1L, buildAdj(1L, "SALIDA", 5)))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -128,14 +145,13 @@ class InventoryServiceTest {
 
     @Test
     void adjust_SALIDA_throwsWhenQuantityExactlyExceedsStock() {
-        // stock = 5, salida = 6 → debe fallar
         Store store = buildStore(1L);
         Product product = buildProduct(1L, 0);
         InventoryStock stock = buildStock(product, store, 5);
 
-        when(storeRepository.findById(1L)).thenReturn(Optional.of(store));
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
         when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(stockRepository.findByProductIdAndStoreId(1L, 1L)).thenReturn(Optional.of(stock));
+        when(stockRepository.findByProductIdAndStoreIdAndTenantId(1L, 1L, TENANT_ID)).thenReturn(Optional.of(stock));
 
         assertThatThrownBy(() -> inventoryService.adjust(1L, buildAdj(1L, "SALIDA", 6)))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -143,14 +159,13 @@ class InventoryServiceTest {
 
     @Test
     void adjust_SALIDA_succeedsWhenQuantityEqualsStock() {
-        // stock = 5, salida = 5 → debe dejar en 0 (válido)
         Store store = buildStore(1L);
         Product product = buildProduct(1L, 0);
         InventoryStock stock = buildStock(product, store, 5);
 
-        when(storeRepository.findById(1L)).thenReturn(Optional.of(store));
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
         when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(stockRepository.findByProductIdAndStoreId(1L, 1L)).thenReturn(Optional.of(stock));
+        when(stockRepository.findByProductIdAndStoreIdAndTenantId(1L, 1L, TENANT_ID)).thenReturn(Optional.of(stock));
         when(stockRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         inventoryService.adjust(1L, buildAdj(1L, "SALIDA", 5));
@@ -162,14 +177,13 @@ class InventoryServiceTest {
 
     @Test
     void adjustSilent_doesNotThrowWhenStockInsufficient() {
-        // Bug crítico corregido: con minStock=0 y quantity=0 no debe lanzar
         Store store = buildStore(1L);
         Product product = buildProduct(1L, 0);
         InventoryStock stock = buildStock(product, store, 0);
 
-        when(storeRepository.findById(1L)).thenReturn(Optional.of(store));
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
         when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(stockRepository.findByProductIdAndStoreId(1L, 1L)).thenReturn(Optional.of(stock));
+        when(stockRepository.findByProductIdAndStoreIdAndTenantId(1L, 1L, TENANT_ID)).thenReturn(Optional.of(stock));
 
         assertThatCode(() -> inventoryService.adjustSilent(1L, buildAdj(1L, "SALIDA", 999)))
                 .doesNotThrowAnyException();
@@ -181,11 +195,10 @@ class InventoryServiceTest {
         Product product = buildProduct(1L, 0);
         InventoryStock stock = buildStock(product, store, 1);
 
-        when(storeRepository.findById(1L)).thenReturn(Optional.of(store));
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
         when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(stockRepository.findByProductIdAndStoreId(1L, 1L)).thenReturn(Optional.of(stock));
+        when(stockRepository.findByProductIdAndStoreIdAndTenantId(1L, 1L, TENANT_ID)).thenReturn(Optional.of(stock));
 
-        // Intentar sacar más de lo disponible — no debe guardar
         inventoryService.adjustSilent(1L, buildAdj(1L, "SALIDA", 999));
 
         verify(stockRepository, never()).save(any());
@@ -207,9 +220,9 @@ class InventoryServiceTest {
         dto.setNotes("Diferencia mensual");
         dto.setUsername("admin");
 
-        when(storeRepository.findById(1L)).thenReturn(Optional.of(store));
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
         when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(stockRepository.findByProductIdAndStoreId(1L, 1L)).thenReturn(Optional.of(stock));
+        when(stockRepository.findByProductIdAndStoreIdAndTenantId(1L, 1L, TENANT_ID)).thenReturn(Optional.of(stock));
         when(stockRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         inventoryService.adjust(1L, dto);
@@ -230,14 +243,13 @@ class InventoryServiceTest {
         Product product = buildProduct(1L, 0);
         InventoryStock stock = buildStock(product, store, 10);
 
-        when(storeRepository.findById(1L)).thenReturn(Optional.of(store));
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
         when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(stockRepository.findByProductIdAndStoreId(1L, 1L)).thenReturn(Optional.of(stock));
+        when(stockRepository.findByProductIdAndStoreIdAndTenantId(1L, 1L, TENANT_ID)).thenReturn(Optional.of(stock));
         when(stockRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         inventoryService.adjust(1L, buildAdj(1L, "ENTRADA", 5));
 
-        // Siempre se registra movimiento, incluso para ENTRADA
         verify(movementRepository, times(1)).save(any(InventoryMovement.class));
     }
 
@@ -248,14 +260,13 @@ class InventoryServiceTest {
         Store store = buildStore(1L);
         Product product = buildProduct(1L, 0);
 
-        when(storeRepository.findById(1L)).thenReturn(Optional.of(store));
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
         when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(stockRepository.findByProductIdAndStoreId(1L, 1L)).thenReturn(Optional.empty());
+        when(stockRepository.findByProductIdAndStoreIdAndTenantId(1L, 1L, TENANT_ID)).thenReturn(Optional.empty());
         when(stockRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         inventoryService.adjust(1L, buildAdj(1L, "ENTRADA", 10));
 
-        // stockRepository.save debe ser llamado para crear el registro nuevo con qty=10
         ArgumentCaptor<InventoryStock> captor = ArgumentCaptor.forClass(InventoryStock.class);
         verify(stockRepository, atLeastOnce()).save(captor.capture());
         assertThat(captor.getAllValues()).anyMatch(s -> s.getQuantity() == 10);
@@ -265,7 +276,7 @@ class InventoryServiceTest {
 
     @Test
     void adjust_throwsWhenStoreNotFound() {
-        when(storeRepository.findById(99L)).thenReturn(Optional.empty());
+        when(storeRepository.findByIdAndTenantId(99L, TENANT_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> inventoryService.adjust(99L, buildAdj(1L, "ENTRADA", 5)))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -274,7 +285,7 @@ class InventoryServiceTest {
 
     @Test
     void adjust_throwsWhenProductNotFound() {
-        when(storeRepository.findById(1L)).thenReturn(Optional.of(buildStore(1L)));
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L)));
         when(productRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> inventoryService.adjust(1L, buildAdj(99L, "ENTRADA", 5)))

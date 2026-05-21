@@ -7,19 +7,41 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 public interface SaleRepository extends JpaRepository<Sale, Long> {
-    List<Sale> findByShiftIdOrderByCreatedAtDesc(Long shiftId);
-    List<Sale> findByStoreIdAndSaleDateOrderByCreatedAtDesc(Long storeId, LocalDate date);
-    List<Sale> findByShiftIdAndStatus(Long shiftId, String status);
 
-    // Historial de ventas por local con rango de fechas opcional
-    @Query("SELECT s FROM Sale s WHERE s.store.id = :storeId AND (:from IS NULL OR s.saleDate >= :from) AND (:to IS NULL OR s.saleDate <= :to) ORDER BY s.createdAt DESC")
-    List<Sale> findByStoreIdAndDateRange(@Param("storeId") Long storeId, @Param("from") LocalDate from, @Param("to") LocalDate to);
+    List<Sale> findByShiftIdAndTenantIdOrderByCreatedAtDesc(Long shiftId, Long tenantId);
 
-    @Query("SELECT s FROM Sale s WHERE s.shift.id = :shiftId AND s.status = 'OPEN'")
-    List<Sale> findOpenByShiftId(@Param("shiftId") Long shiftId);
+    List<Sale> findByShiftIdAndStatusAndTenantId(Long shiftId, String status, Long tenantId);
 
-    @Query("SELECT COUNT(s) FROM Sale s WHERE s.shift.id = :shiftId AND s.status = 'OPEN'")
-    long countOpenByShiftId(@Param("shiftId") Long shiftId);
+    /** Busca una venta por id validando que pertenezca al tenant. */
+    Optional<Sale> findByIdAndTenantId(Long id, Long tenantId);
+
+    @Query("SELECT s FROM Sale s WHERE s.store.id = :storeId AND s.tenantId = :tenantId " +
+           "AND (:from IS NULL OR s.saleDate >= :from) AND (:to IS NULL OR s.saleDate <= :to) " +
+           "ORDER BY s.createdAt DESC")
+    List<Sale> findByStoreIdAndTenantIdAndDateRange(
+            @Param("storeId") Long storeId,
+            @Param("tenantId") Long tenantId,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to);
+
+    @Query("SELECT s FROM Sale s WHERE s.store.id = :storeId AND s.tenantId = :tenantId " +
+           "AND s.saleDate >= :from AND s.saleDate <= :to ORDER BY s.createdAt DESC")
+    List<Sale> findByStoreIdAndTenantIdAndDateRangeStrict(
+            @Param("storeId") Long storeId,
+            @Param("tenantId") Long tenantId,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to);
+
+    @Query("SELECT s FROM Sale s WHERE s.shift.id = :shiftId AND s.tenantId = :tenantId AND s.status = 'OPEN'")
+    List<Sale> findOpenByShiftIdAndTenantId(
+            @Param("shiftId") Long shiftId,
+            @Param("tenantId") Long tenantId);
+
+    @Query("SELECT COUNT(s) FROM Sale s WHERE s.shift.id = :shiftId AND s.tenantId = :tenantId AND s.status = 'OPEN'")
+    long countOpenByShiftIdAndTenantId(
+            @Param("shiftId") Long shiftId,
+            @Param("tenantId") Long tenantId);
 }

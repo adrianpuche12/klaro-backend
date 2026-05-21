@@ -17,6 +17,9 @@ public class InventoryMovement {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "tenant_id", nullable = false)
+    private Long tenantId;
+
     // ENTRADA | SALIDA | AJUSTE | VENTA
     @NotBlank
     @Column(nullable = false)
@@ -68,4 +71,7 @@ public class InventoryMovement {
     public void setStore(Store store) { this.store = store; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
+
+    public Long getTenantId() { return tenantId; }
+    public void setTenantId(Long tenantId) { this.tenantId = tenantId; }
 }

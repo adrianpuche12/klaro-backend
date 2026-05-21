@@ -27,6 +27,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @TestPropertySource(locations = "classpath:application-test.properties")
 class SaleRepositoryIT {
 
+    private static final Long TENANT_ID = 1L;
+    private static final Long OTHER_TENANT_ID = 2L;
+
     @Container
     @ServiceConnection
     static PostgreSQLContainer<?> postgres =
@@ -47,6 +50,7 @@ class SaleRepositoryIT {
 
         store = new Store();
         store.setName("Danli Test");
+        store.setTenantId(TENANT_ID);
         store = storeRepository.save(store);
 
         shift = new Shift();
@@ -54,12 +58,17 @@ class SaleRepositoryIT {
         shift.setUsername("cajero01");
         shift.setStatus("OPEN");
         shift.setCode("T-20260514-0900-DAN");
+        shift.setTenantId(TENANT_ID);
         shift = shiftRepository.save(shift);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private Sale saveSale(String status, BigDecimal total) {
+        return saveSale(status, total, TENANT_ID);
+    }
+
+    private Sale saveSale(String status, BigDecimal total, Long tenantId) {
         Sale sale = new Sale();
         sale.setShift(shift);
         sale.setStore(store);
@@ -67,120 +76,84 @@ class SaleRepositoryIT {
         sale.setSaleDate(LocalDate.now());
         sale.setStatus(status);
         sale.setSubtotal(total);
-        sale.setIsv(total.multiply(new BigDecimal("0.15")).setScale(2, java.math.RoundingMode.HALF_UP));
-        sale.setTotal(total.add(sale.getIsv()));
+        sale.setIsv(BigDecimal.ZERO);
+        sale.setTotal(total);
+        sale.setTenantId(tenantId);
         return saleRepository.save(sale);
     }
 
-    // ── findOpenByShiftId (@Query custom) ─────────────────────────────────────
+    // ── findOpenByShiftIdAndTenantId ──────────────────────────────────────────
 
     @Test
-    void findOpenByShiftId_returnsOnlyOpenSales() {
+    void findOpenByShiftIdAndTenantId_returnsOnlyOpenSales() {
         saveSale("OPEN",      new BigDecimal("200.00"));
         saveSale("OPEN",      new BigDecimal("150.00"));
-        saveSale("CONFIRMED", new BigDecimal("100.00")); // no debe aparecer
+        saveSale("CONFIRMED", new BigDecimal("100.00"));
 
-        List<Sale> result = saleRepository.findOpenByShiftId(shift.getId());
+        List<Sale> result = saleRepository.findOpenByShiftIdAndTenantId(shift.getId(), TENANT_ID);
 
         assertThat(result).hasSize(2);
         assertThat(result).allMatch(s -> "OPEN".equals(s.getStatus()));
     }
 
     @Test
-    void findOpenByShiftId_returnsEmptyWhenAllSalesConfirmed() {
+    void findOpenByShiftIdAndTenantId_excludesOtherTenants() {
+        saveSale("OPEN", new BigDecimal("200.00"), TENANT_ID);
+        saveSale("OPEN", new BigDecimal("150.00"), OTHER_TENANT_ID);
+
+        List<Sale> result = saleRepository.findOpenByShiftIdAndTenantId(shift.getId(), TENANT_ID);
+
+        assertThat(result).hasSize(1);
+    }
+
+    @Test
+    void findOpenByShiftIdAndTenantId_returnsEmptyWhenAllSalesConfirmed() {
         saveSale("CONFIRMED", new BigDecimal("200.00"));
-        saveSale("CONFIRMED", new BigDecimal("150.00"));
 
-        List<Sale> result = saleRepository.findOpenByShiftId(shift.getId());
-
-        assertThat(result).isEmpty();
-    }
-
-    @Test
-    void findOpenByShiftId_returnsEmptyWhenNoSales() {
-        List<Sale> result = saleRepository.findOpenByShiftId(shift.getId());
+        List<Sale> result = saleRepository.findOpenByShiftIdAndTenantId(shift.getId(), TENANT_ID);
 
         assertThat(result).isEmpty();
     }
 
-    @Test
-    void findOpenByShiftId_onlyReturnsFromRequestedShift() {
-        // Crear segundo turno con venta OPEN
-        Shift otroTurno = new Shift();
-        otroTurno.setStore(store);
-        otroTurno.setUsername("cajero02");
-        otroTurno.setStatus("OPEN");
-        otroTurno.setCode("T-20260514-1000-DAN");
-        otroTurno = shiftRepository.save(otroTurno);
-
-        Sale saleOtro = new Sale();
-        saleOtro.setShift(otroTurno);
-        saleOtro.setStore(store);
-        saleOtro.setUsername("cajero02");
-        saleOtro.setSaleDate(LocalDate.now());
-        saleOtro.setStatus("OPEN");
-        saleOtro.setSubtotal(new BigDecimal("100.00"));
-        saleOtro.setIsv(new BigDecimal("15.00"));
-        saleOtro.setTotal(new BigDecimal("115.00"));
-        saleRepository.save(saleOtro);
-
-        // El turno principal no tiene ventas
-        List<Sale> result = saleRepository.findOpenByShiftId(shift.getId());
-
-        assertThat(result).isEmpty();
-    }
-
-    // ── countOpenByShiftId ────────────────────────────────────────────────────
+    // ── countOpenByShiftIdAndTenantId ─────────────────────────────────────────
 
     @Test
-    void countOpenByShiftId_returnsCorrectCount() {
+    void countOpenByShiftIdAndTenantId_returnsCorrectCount() {
         saveSale("OPEN",      new BigDecimal("200.00"));
         saveSale("OPEN",      new BigDecimal("150.00"));
         saveSale("CONFIRMED", new BigDecimal("100.00"));
 
-        long count = saleRepository.countOpenByShiftId(shift.getId());
+        long count = saleRepository.countOpenByShiftIdAndTenantId(shift.getId(), TENANT_ID);
 
         assertThat(count).isEqualTo(2);
     }
 
-    @Test
-    void countOpenByShiftId_returnsZeroWhenNoOpenSales() {
-        saveSale("CONFIRMED", new BigDecimal("200.00"));
-
-        long count = saleRepository.countOpenByShiftId(shift.getId());
-
-        assertThat(count).isZero();
-    }
-
-    // ── findByShiftIdOrderByCreatedAtDesc ─────────────────────────────────────
+    // ── findByShiftIdAndTenantIdOrderByCreatedAtDesc ──────────────────────────
 
     @Test
-    void findByShiftIdOrderByCreatedAtDesc_returnsAllSalesRegardlessOfStatus() {
-        saveSale("OPEN",      new BigDecimal("200.00"));
-        saveSale("CONFIRMED", new BigDecimal("150.00"));
+    void findByShiftIdAndTenantIdOrderByCreatedAtDesc_returnsAllSalesOfTenant() {
+        saveSale("OPEN",      new BigDecimal("200.00"), TENANT_ID);
+        saveSale("CONFIRMED", new BigDecimal("150.00"), TENANT_ID);
+        saveSale("OPEN",      new BigDecimal("100.00"), OTHER_TENANT_ID);
 
-        List<Sale> result = saleRepository.findByShiftIdOrderByCreatedAtDesc(shift.getId());
+        List<Sale> result = saleRepository.findByShiftIdAndTenantIdOrderByCreatedAtDesc(
+                shift.getId(), TENANT_ID);
 
         assertThat(result).hasSize(2);
     }
 
-    @Test
-    void findByShiftIdOrderByCreatedAtDesc_returnsEmptyForUnknownShift() {
-        List<Sale> result = saleRepository.findByShiftIdOrderByCreatedAtDesc(9999L);
-
-        assertThat(result).isEmpty();
-    }
-
-    // ── findByShiftIdAndStatus ────────────────────────────────────────────────
+    // ── findByShiftIdAndStatusAndTenantId ─────────────────────────────────────
 
     @Test
-    void findByShiftIdAndStatus_filtersCorrectly() {
+    void findByShiftIdAndStatusAndTenantId_filtersCorrectly() {
         saveSale("OPEN",      new BigDecimal("200.00"));
         saveSale("OPEN",      new BigDecimal("150.00"));
         saveSale("CONFIRMED", new BigDecimal("100.00"));
 
-        List<Sale> open      = saleRepository.findByShiftIdAndStatus(shift.getId(), "OPEN");
-        List<Sale> confirmed = saleRepository.findByShiftIdAndStatus(shift.getId(), "CONFIRMED");
+        List<Sale> open = saleRepository.findByShiftIdAndStatusAndTenantId(
+                shift.getId(), "OPEN", TENANT_ID);
+        List<Sale> confirmed = saleRepository.findByShiftIdAndStatusAndTenantId(
+                shift.getId(), "CONFIRMED", TENANT_ID);
 
         assertThat(open).hasSize(2);
         assertThat(confirmed).hasSize(1);

@@ -5,14 +5,15 @@ import balance.repository.StoreRepository;
 import balance.sales.dto.ShiftResponseDTO;
 import balance.sales.model.Shift;
 import balance.sales.repository.ShiftRepository;
+import balance.tenant.context.TenantContext;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
@@ -22,10 +23,22 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class ShiftServiceTest {
 
+    private static final Long TENANT_ID = 1L;
+
     @InjectMocks private ShiftService shiftService;
 
     @Mock private ShiftRepository shiftRepository;
     @Mock private StoreRepository storeRepository;
+
+    @BeforeEach
+    void setTenantContext() {
+        TenantContext.setTenantId(TENANT_ID);
+    }
+
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
+    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -33,6 +46,7 @@ class ShiftServiceTest {
         Store s = new Store();
         s.setId(id);
         s.setName(name);
+        s.setTenantId(TENANT_ID);
         return s;
     }
 
@@ -42,6 +56,7 @@ class ShiftServiceTest {
         shift.setStatus(status);
         shift.setCode("T-20260514-0900-DAN");
         shift.setUsername("cajero01");
+        shift.setTenantId(TENANT_ID);
         return shift;
     }
 
@@ -49,9 +64,8 @@ class ShiftServiceTest {
 
     @Test
     void openShift_codeMatchesExpectedPattern() {
-        // Formato: T-YYYYMMDD-HHmm-DAN (máx 3 letras del nombre del local)
-        when(storeRepository.findById(1L)).thenReturn(Optional.of(buildStore(1L, "Danli")));
-        when(shiftRepository.existsByStoreIdAndStatus(1L, "OPEN")).thenReturn(false);
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
+        when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, "OPEN", TENANT_ID)).thenReturn(false);
         when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ShiftResponseDTO result = shiftService.openShift(1L, "cajero01");
@@ -61,9 +75,8 @@ class ShiftServiceTest {
 
     @Test
     void openShift_codeEndsWithFirstThreeLettersOfStoreName() {
-        // "Danli" → solo letras → "Danli" → uppercase → "DANLI" → substring(0,3) → "DAN"
-        when(storeRepository.findById(1L)).thenReturn(Optional.of(buildStore(1L, "Danli")));
-        when(shiftRepository.existsByStoreIdAndStatus(1L, "OPEN")).thenReturn(false);
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
+        when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, "OPEN", TENANT_ID)).thenReturn(false);
         when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ShiftResponseDTO result = shiftService.openShift(1L, "cajero01");
@@ -73,9 +86,8 @@ class ShiftServiceTest {
 
     @Test
     void openShift_codeStripsNonLettersFromStoreName() {
-        // "El Paraiso" → solo letras → "ElParaiso" → uppercase → "ELPARAISO" → substring(0,3) → "ELP"
-        when(storeRepository.findById(2L)).thenReturn(Optional.of(buildStore(2L, "El Paraiso")));
-        when(shiftRepository.existsByStoreIdAndStatus(2L, "OPEN")).thenReturn(false);
+        when(storeRepository.findByIdAndTenantId(2L, TENANT_ID)).thenReturn(Optional.of(buildStore(2L, "El Paraiso")));
+        when(shiftRepository.existsByStoreIdAndStatusAndTenantId(2L, "OPEN", TENANT_ID)).thenReturn(false);
         when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ShiftResponseDTO result = shiftService.openShift(2L, "cajero02");
@@ -88,8 +100,8 @@ class ShiftServiceTest {
         String todayStr = java.time.LocalDate.now()
                 .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
 
-        when(storeRepository.findById(1L)).thenReturn(Optional.of(buildStore(1L, "Danli")));
-        when(shiftRepository.existsByStoreIdAndStatus(1L, "OPEN")).thenReturn(false);
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
+        when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, "OPEN", TENANT_ID)).thenReturn(false);
         when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ShiftResponseDTO result = shiftService.openShift(1L, "cajero01");
@@ -97,12 +109,10 @@ class ShiftServiceTest {
         assertThat(result.getCode()).contains(todayStr);
     }
 
-    // ── openShift — estado inicial ────────────────────────────────────────────
-
     @Test
     void openShift_setsStatusToOpen() {
-        when(storeRepository.findById(1L)).thenReturn(Optional.of(buildStore(1L, "Danli")));
-        when(shiftRepository.existsByStoreIdAndStatus(1L, "OPEN")).thenReturn(false);
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
+        when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, "OPEN", TENANT_ID)).thenReturn(false);
         when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ShiftResponseDTO result = shiftService.openShift(1L, "cajero01");
@@ -111,11 +121,9 @@ class ShiftServiceTest {
         assertThat(result.getUsername()).isEqualTo("cajero01");
     }
 
-    // ── openShift — validaciones de negocio ───────────────────────────────────
-
     @Test
     void openShift_throwsWhenStoreNotFound() {
-        when(storeRepository.findById(99L)).thenReturn(Optional.empty());
+        when(storeRepository.findByIdAndTenantId(99L, TENANT_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> shiftService.openShift(99L, "cajero"))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -124,8 +132,8 @@ class ShiftServiceTest {
 
     @Test
     void openShift_throwsWhenShiftAlreadyOpen() {
-        when(storeRepository.findById(1L)).thenReturn(Optional.of(buildStore(1L, "Danli")));
-        when(shiftRepository.existsByStoreIdAndStatus(1L, "OPEN")).thenReturn(true);
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
+        when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, "OPEN", TENANT_ID)).thenReturn(true);
 
         assertThatThrownBy(() -> shiftService.openShift(1L, "cajero01"))
                 .isInstanceOf(IllegalStateException.class)
@@ -139,7 +147,7 @@ class ShiftServiceTest {
         Store store = buildStore(1L, "Danli");
         Shift shift = buildShift(1L, store, "OPEN");
 
-        when(shiftRepository.findById(1L)).thenReturn(Optional.of(shift));
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(shift));
         when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ShiftResponseDTO result = shiftService.closeShift(1L);
@@ -150,7 +158,7 @@ class ShiftServiceTest {
 
     @Test
     void closeShift_throwsWhenShiftNotFound() {
-        when(shiftRepository.findById(99L)).thenReturn(Optional.empty());
+        when(shiftRepository.findByIdAndTenantId(99L, TENANT_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> shiftService.closeShift(99L))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -162,7 +170,7 @@ class ShiftServiceTest {
         Store store = buildStore(1L, "Danli");
         Shift shift = buildShift(1L, store, "CLOSED");
 
-        when(shiftRepository.findById(1L)).thenReturn(Optional.of(shift));
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(shift));
 
         assertThatThrownBy(() -> shiftService.closeShift(1L))
                 .isInstanceOf(IllegalStateException.class)
@@ -173,7 +181,8 @@ class ShiftServiceTest {
 
     @Test
     void getActiveShift_returnsNullWhenNoActiveShift() {
-        when(shiftRepository.findByStoreIdAndStatus(1L, "OPEN")).thenReturn(Optional.empty());
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
+        when(shiftRepository.findByStoreIdAndStatusAndTenantId(1L, "OPEN", TENANT_ID)).thenReturn(Optional.empty());
 
         ShiftResponseDTO result = shiftService.getActiveShift(1L);
 
@@ -185,7 +194,8 @@ class ShiftServiceTest {
         Store store = buildStore(1L, "Danli");
         Shift shift = buildShift(1L, store, "OPEN");
 
-        when(shiftRepository.findByStoreIdAndStatus(1L, "OPEN")).thenReturn(Optional.of(shift));
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
+        when(shiftRepository.findByStoreIdAndStatusAndTenantId(1L, "OPEN", TENANT_ID)).thenReturn(Optional.of(shift));
 
         ShiftResponseDTO result = shiftService.getActiveShift(1L);
 
@@ -197,7 +207,7 @@ class ShiftServiceTest {
 
     @Test
     void getById_throwsWhenNotFound() {
-        when(shiftRepository.findById(99L)).thenReturn(Optional.empty());
+        when(shiftRepository.findByIdAndTenantId(99L, TENANT_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> shiftService.getById(99L))
                 .isInstanceOf(IllegalArgumentException.class)
