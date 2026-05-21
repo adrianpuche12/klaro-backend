@@ -2,6 +2,7 @@ package balance.service;
 
 import balance.model.Transaction;
 import balance.repository.TransactionRepository;
+import balance.tenant.context.TenantSecurityUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -13,60 +14,51 @@ import java.util.Optional;
 @Service
 public class BalanceService {
 
-    @Autowired
-    private TransactionRepository transactionRepository;
+    @Autowired private TransactionRepository transactionRepository;
 
-    // Método para guardar una transacción (crear o actualizar)
     public Transaction saveTransaction(Transaction transaction) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        transaction.setTenantId(tenantId);
         return transactionRepository.save(transaction);
     }
 
-    // Método para obtener todas las transacciones
     public List<Transaction> getAllTransactions() {
-        return transactionRepository.findAllOrderByDateDesc();
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        return transactionRepository.findByTenantIdOrderByDateDesc(tenantId);
     }
 
-    // Método para calcular el balance entre dos fechas
     public BigDecimal calculateBalance(LocalDate startDate, LocalDate endDate) {
-        // Ajustar la fecha de fin para incluir el día completo
+        Long tenantId = TenantSecurityUtils.requireTenantId();
         LocalDate adjustedEndDate = endDate.plusDays(1);
+        List<Transaction> transactions = transactionRepository
+                .findByTenantIdAndDateRange(tenantId, startDate, adjustedEndDate);
 
-        // Obtener las transacciones dentro del rango de fechas
-        List<Transaction> transactions = transactionRepository.findByDateBetweenOrderByDateDesc(startDate, adjustedEndDate);
+        if (transactions == null || transactions.isEmpty()) return BigDecimal.ZERO;
 
-        // Si no hay transacciones, retornar cero
-        if (transactions == null || transactions.isEmpty()) {
-            return BigDecimal.ZERO;
-        }
-
-        // Calcular el ingreso total (income)
         BigDecimal income = transactions.stream()
                 .filter(t -> "income".equalsIgnoreCase(t.getType()))
-                .map(t -> new BigDecimal(t.getAmount().toString())) // Asegurarse de que Amount sea BigDecimal
+                .map(t -> new BigDecimal(t.getAmount().toString()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Calcular el gasto total (expense)
         BigDecimal expense = transactions.stream()
                 .filter(t -> "expense".equalsIgnoreCase(t.getType()))
-                .map(t -> new BigDecimal(t.getAmount().toString())) // Asegurarse de que Amount sea BigDecimal
+                .map(t -> new BigDecimal(t.getAmount().toString()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Retornar el balance: ingreso - gasto
         return income.subtract(expense);
     }
 
-    // Método para obtener una transacción por ID
     public Optional<Transaction> getTransactionById(Long id) {
-        return transactionRepository.findById(id);
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        return transactionRepository.findByIdAndTenantId(id, tenantId);
     }
 
-    // Método para eliminar una transacción por ID
     public boolean deleteTransaction(Long id) {
-        Optional<Transaction> transaction = transactionRepository.findById(id);
-        if (transaction.isPresent()) {
-            transactionRepository.delete(transaction.get());
-            return true;
-        }
-        return false;
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        return transactionRepository.findByIdAndTenantId(id, tenantId)
+                .map(t -> {
+                    transactionRepository.delete(t);
+                    return true;
+                }).orElse(false);
     }
 }

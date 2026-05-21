@@ -12,11 +12,14 @@ public class DailySummaryDTO {
     private BigDecimal totalSubtotal;
     private BigDecimal totalIsv;
     private BigDecimal totalAmount;
+    private BigDecimal totalCash;
+    private BigDecimal totalCard;
     private List<ProductSummaryItem> productSummary;
 
     public DailySummaryDTO(LocalDate date, Long storeId, String storeName,
                            long totalSales, BigDecimal totalSubtotal, BigDecimal totalIsv,
-                           BigDecimal totalAmount, List<ProductSummaryItem> productSummary) {
+                           BigDecimal totalAmount, BigDecimal totalCash, BigDecimal totalCard,
+                           List<ProductSummaryItem> productSummary) {
         this.date           = date;
         this.storeId        = storeId;
         this.storeName      = storeName;
@@ -24,6 +27,8 @@ public class DailySummaryDTO {
         this.totalSubtotal  = totalSubtotal;
         this.totalIsv       = totalIsv;
         this.totalAmount    = totalAmount;
+        this.totalCash      = totalCash;
+        this.totalCard      = totalCard;
         this.productSummary = productSummary;
     }
 
@@ -40,18 +45,20 @@ public class DailySummaryDTO {
             this.subtotal    = subtotal;
         }
 
-        public Long getProductId() { return productId; }
-        public String getProductName() { return productName; }
-        public int getQuantity() { return quantity; }
-        public BigDecimal getSubtotal() { return subtotal; }
+        public Long getProductId()       { return productId; }
+        public String getProductName()   { return productName; }
+        public int getQuantity()         { return quantity; }
+        public BigDecimal getSubtotal()  { return subtotal; }
     }
 
-    public LocalDate getDate() { return date; }
-    public Long getStoreId() { return storeId; }
-    public String getStoreName() { return storeName; }
-    public long getTotalSales() { return totalSales; }
-    public BigDecimal getTotalSubtotal() { return totalSubtotal; }
-    public BigDecimal getTotalIsv() { return totalIsv; }
-    public BigDecimal getTotalAmount() { return totalAmount; }
+    public LocalDate getDate()                       { return date; }
+    public Long getStoreId()                         { return storeId; }
+    public String getStoreName()                     { return storeName; }
+    public long getTotalSales()                      { return totalSales; }
+    public BigDecimal getTotalSubtotal()             { return totalSubtotal; }
+    public BigDecimal getTotalIsv()                  { return totalIsv; }
+    public BigDecimal getTotalAmount()               { return totalAmount; }
+    public BigDecimal getTotalCash()                 { return totalCash; }
+    public BigDecimal getTotalCard()                 { return totalCard; }
     public List<ProductSummaryItem> getProductSummary() { return productSummary; }
 }
