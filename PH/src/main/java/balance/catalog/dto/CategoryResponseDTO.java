@@ -3,6 +3,7 @@ package balance.catalog.dto;
 import balance.catalog.model.Category;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 public class CategoryResponseDTO {
@@ -31,7 +32,7 @@ public class CategoryResponseDTO {
         dto.productCount = productCount;
         dto.createdAt    = category.getCreatedAt();
         dto.updatedAt    = category.getUpdatedAt();
-        dto.children     = List.of(); // el service lo completa
+        dto.children     = new ArrayList<>(); // el service agrega los hijos
         return dto;
     }
 
