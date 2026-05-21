@@ -14,6 +14,7 @@ import balance.sales.repository.SaleRepository;
 import balance.tenant.context.TenantSecurityUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -36,6 +37,7 @@ public class OperationsV3Service {
      * Lista unificada de operaciones del tenant con filtros opcionales.
      * Combina: CLOSING, SALE, SUPPLIER, SALARY, GASTO_ADMIN, TRANSACTION
      */
+    @Transactional(readOnly = true)
     public List<OperationDTO> getOperations(LocalDate from, LocalDate to,
                                              String typeFilter, Long storeId,
                                              String sort, int page, int size) {
@@ -66,6 +68,7 @@ public class OperationsV3Service {
         return all.subList(fromIdx, Math.min(fromIdx + size, all.size()));
     }
 
+    @Transactional(readOnly = true)
     public OperationSummaryDTO getSummary(LocalDate from, LocalDate to, Long storeId) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
 
@@ -203,6 +206,7 @@ public class OperationsV3Service {
     }
 
     /** Para uso interno del ReportService (sin paginación). */
+    @Transactional(readOnly = true)
     public List<OperationDTO> getAllForExport(LocalDate from, LocalDate to, String typeFilter, Long storeId) {
         return getOperations(from, to, typeFilter, storeId, "DATE_DESC", 0, Integer.MAX_VALUE);
     }

@@ -13,6 +13,7 @@ import balance.sales.repository.ShiftRepository;
 import balance.tenant.context.TenantSecurityUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -31,6 +32,7 @@ public class DashboardService {
     @Autowired private InventoryStockRepository stockRepository;
     @Autowired private ProductRepository        productRepository;
 
+    @Transactional(readOnly = true)
     public DashboardDTO getDashboard() {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         LocalDate today = LocalDate.now(HONDURAS_TZ);
@@ -41,14 +43,15 @@ public class DashboardService {
                 .map(store -> buildStoreDTO(store, tenantId, today))
                 .toList();
 
+        // Usar strict (fechas no-nulas) para evitar bug Hibernate 6 con IS NULL en LocalDate
         long totalSalesToday = activeStores.stream()
                 .mapToLong(s -> saleRepository
-                        .findByStoreIdAndTenantIdAndDateRange(s.getId(), tenantId, today, today).size())
+                        .findByStoreIdAndTenantIdAndDateRangeStrict(s.getId(), tenantId, today, today).size())
                 .sum();
 
         BigDecimal totalAmountToday = activeStores.stream()
                 .flatMap(s -> saleRepository
-                        .findByStoreIdAndTenantIdAndDateRange(s.getId(), tenantId, today, today).stream())
+                        .findByStoreIdAndTenantIdAndDateRangeStrict(s.getId(), tenantId, today, today).stream())
                 .map(Sale::getTotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
