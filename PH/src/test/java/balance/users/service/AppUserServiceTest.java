@@ -2,10 +2,13 @@ package balance.users.service;
 
 import balance.model.Store;
 import balance.repository.StoreRepository;
+import balance.tenant.context.TenantContext;
 import balance.users.dto.AppUserRequestDTO;
 import balance.users.dto.AppUserResponseDTO;
 import balance.users.model.AppUser;
 import balance.users.repository.AppUserRepository;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -22,11 +25,23 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class AppUserServiceTest {
 
+    private static final Long TENANT_ID = 1L;
+
     @InjectMocks private AppUserService appUserService;
 
     @Mock private AppUserRepository    userRepository;
     @Mock private StoreRepository      storeRepository;
     @Mock private KeycloakAdminService keycloakAdmin;
+
+    @BeforeEach
+    void setTenantContext() {
+        TenantContext.setTenantId(TENANT_ID);
+    }
+
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
+    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -34,6 +49,7 @@ class AppUserServiceTest {
         Store s = new Store();
         s.setId(id);
         s.setName(name);
+        s.setTenantId(TENANT_ID);
         return s;
     }
 
@@ -44,6 +60,7 @@ class AppUserServiceTest {
         u.setKeycloakId("kc-uuid-" + id);
         u.setStatus(status);
         u.setStore(buildStore(1L, "Danli"));
+        u.setTenantId(TENANT_ID);
         return u;
     }
 
@@ -60,8 +77,8 @@ class AppUserServiceTest {
 
     @Test
     void create_normalizesUsernameToLowercase() {
-        when(userRepository.existsByUsername("cajero01")).thenReturn(false);
-        when(storeRepository.findById(1L)).thenReturn(Optional.of(buildStore(1L, "Danli")));
+        when(userRepository.existsByUsernameAndTenantId("cajero01", TENANT_ID)).thenReturn(false);
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
         when(keycloakAdmin.createUser(any(), any(), any())).thenReturn("kc-uuid-nuevo");
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -74,8 +91,8 @@ class AppUserServiceTest {
 
     @Test
     void create_trimesUsernameWhitespace() {
-        when(userRepository.existsByUsername("cajero01")).thenReturn(false);
-        when(storeRepository.findById(1L)).thenReturn(Optional.of(buildStore(1L, "Danli")));
+        when(userRepository.existsByUsernameAndTenantId("cajero01", TENANT_ID)).thenReturn(false);
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
         when(keycloakAdmin.createUser(any(), any(), any())).thenReturn("kc-uuid-nuevo");
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -88,8 +105,8 @@ class AppUserServiceTest {
 
     @Test
     void create_savesKeycloakIdReturnedByKeycloak() {
-        when(userRepository.existsByUsername("cajero01")).thenReturn(false);
-        when(storeRepository.findById(1L)).thenReturn(Optional.of(buildStore(1L, "Danli")));
+        when(userRepository.existsByUsernameAndTenantId("cajero01", TENANT_ID)).thenReturn(false);
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
         when(keycloakAdmin.createUser(any(), any(), any())).thenReturn("kc-uuid-abc123");
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -102,8 +119,8 @@ class AppUserServiceTest {
 
     @Test
     void create_setsStatusToActiveByDefault() {
-        when(userRepository.existsByUsername("cajero01")).thenReturn(false);
-        when(storeRepository.findById(1L)).thenReturn(Optional.of(buildStore(1L, "Danli")));
+        when(userRepository.existsByUsernameAndTenantId("cajero01", TENANT_ID)).thenReturn(false);
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
         when(keycloakAdmin.createUser(any(), any(), any())).thenReturn("kc-uuid-nuevo");
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -118,7 +135,7 @@ class AppUserServiceTest {
 
     @Test
     void create_throwsWhenUsernameAlreadyExists() {
-        when(userRepository.existsByUsername("cajero01")).thenReturn(true);
+        when(userRepository.existsByUsernameAndTenantId("cajero01", TENANT_ID)).thenReturn(true);
 
         assertThatThrownBy(() -> appUserService.create(buildRequest("cajero01", "Cajero", 1L)))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -129,8 +146,8 @@ class AppUserServiceTest {
 
     @Test
     void create_throwsWhenStoreNotFound() {
-        when(userRepository.existsByUsername("cajero01")).thenReturn(false);
-        when(storeRepository.findById(99L)).thenReturn(Optional.empty());
+        when(userRepository.existsByUsernameAndTenantId("cajero01", TENANT_ID)).thenReturn(false);
+        when(storeRepository.findByIdAndTenantId(99L, TENANT_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> appUserService.create(buildRequest("cajero01", "Cajero", 99L)))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -144,7 +161,7 @@ class AppUserServiceTest {
     @Test
     void suspend_changesStatusToSuspended() {
         AppUser user = buildUser(1L, "cajero01", "ACTIVE");
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         AppUserResponseDTO result = appUserService.suspend(1L);
@@ -155,7 +172,7 @@ class AppUserServiceTest {
     @Test
     void suspend_disablesUserInKeycloak() {
         AppUser user = buildUser(1L, "cajero01", "ACTIVE");
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         appUserService.suspend(1L);
@@ -166,7 +183,7 @@ class AppUserServiceTest {
     @Test
     void suspend_throwsWhenUserAlreadySuspended() {
         AppUser user = buildUser(1L, "cajero01", "SUSPENDED");
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
 
         assertThatThrownBy(() -> appUserService.suspend(1L))
                 .isInstanceOf(IllegalStateException.class)
@@ -175,7 +192,7 @@ class AppUserServiceTest {
 
     @Test
     void suspend_throwsWhenUserNotFound() {
-        when(userRepository.findById(99L)).thenReturn(Optional.empty());
+        when(userRepository.findByIdAndTenantId(99L, TENANT_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> appUserService.suspend(99L))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -187,7 +204,7 @@ class AppUserServiceTest {
     @Test
     void activate_changesStatusToActive() {
         AppUser user = buildUser(1L, "cajero01", "SUSPENDED");
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         AppUserResponseDTO result = appUserService.activate(1L);
@@ -198,7 +215,7 @@ class AppUserServiceTest {
     @Test
     void activate_enablesUserInKeycloak() {
         AppUser user = buildUser(1L, "cajero01", "SUSPENDED");
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         appUserService.activate(1L);
@@ -209,7 +226,7 @@ class AppUserServiceTest {
     @Test
     void activate_throwsWhenUserAlreadyActive() {
         AppUser user = buildUser(1L, "cajero01", "ACTIVE");
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
 
         assertThatThrownBy(() -> appUserService.activate(1L))
                 .isInstanceOf(IllegalStateException.class)
@@ -223,8 +240,8 @@ class AppUserServiceTest {
         AppUser user = buildUser(1L, "cajero01", "ACTIVE");
         Store newStore = buildStore(2L, "El Paraíso");
 
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
-        when(storeRepository.findById(2L)).thenReturn(Optional.of(newStore));
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
+        when(storeRepository.findByIdAndTenantId(2L, TENANT_ID)).thenReturn(Optional.of(newStore));
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         appUserService.reassign(1L, 2L);
@@ -235,8 +252,8 @@ class AppUserServiceTest {
     @Test
     void reassign_throwsWhenNewStoreNotFound() {
         AppUser user = buildUser(1L, "cajero01", "ACTIVE");
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
-        when(storeRepository.findById(99L)).thenReturn(Optional.empty());
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
+        when(storeRepository.findByIdAndTenantId(99L, TENANT_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> appUserService.reassign(1L, 99L))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -248,7 +265,7 @@ class AppUserServiceTest {
     @Test
     void delete_removesUserFromKeycloakAndDatabase() {
         AppUser user = buildUser(1L, "cajero01", "ACTIVE");
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
 
         appUserService.delete(1L);
 
@@ -259,9 +276,8 @@ class AppUserServiceTest {
     @Test
     void delete_callsKeycloakBeforeDatabase() {
         AppUser user = buildUser(1L, "cajero01", "ACTIVE");
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
 
-        // Verificar orden: Keycloak primero, luego BD
         var inOrder = inOrder(keycloakAdmin, userRepository);
         appUserService.delete(1L);
         inOrder.verify(keycloakAdmin).deleteUser("kc-uuid-1");
@@ -273,16 +289,16 @@ class AppUserServiceTest {
     @Test
     void findByUsername_normalizesToLowercase() {
         AppUser user = buildUser(1L, "cajero01", "ACTIVE");
-        when(userRepository.findByUsername("cajero01")).thenReturn(Optional.of(user));
+        when(userRepository.findByUsernameAndTenantId("cajero01", TENANT_ID)).thenReturn(Optional.of(user));
 
         appUserService.findByUsername("CAJERO01");
 
-        verify(userRepository).findByUsername("cajero01");
+        verify(userRepository).findByUsernameAndTenantId("cajero01", TENANT_ID);
     }
 
     @Test
     void findByUsername_throwsWhenNotFound() {
-        when(userRepository.findByUsername("desconocido")).thenReturn(Optional.empty());
+        when(userRepository.findByUsernameAndTenantId("desconocido", TENANT_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> appUserService.findByUsername("desconocido"))
                 .isInstanceOf(IllegalArgumentException.class)
