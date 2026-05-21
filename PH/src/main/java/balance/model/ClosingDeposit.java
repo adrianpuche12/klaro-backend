@@ -12,6 +12,9 @@ public class ClosingDeposit {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "tenant_id", nullable = false)
+    private Long tenantId;
+
     @Min(value = 1, message = "La cantidad de cierres debe ser al menos 1")
     private Integer closingsCount;
     
@@ -114,5 +117,8 @@ public class ClosingDeposit {
 
     public String getImageUri() { return imageUri; }
     public void setImageUri(String imageUri) { this.imageUri = imageUri; }
+
+    public Long getTenantId() { return tenantId; }
+    public void setTenantId(Long tenantId) { this.tenantId = tenantId; }
 }
 

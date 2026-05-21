@@ -13,7 +13,10 @@ public class GastoAdmin {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    
+
+    @Column(name = "tenant_id", nullable = false)
+    private Long tenantId;
+
     @NotNull(message = "La fecha es obligatoria")
     @Column(name = "fecha", nullable = false)
     private LocalDate fecha;
@@ -188,7 +191,10 @@ public class GastoAdmin {
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
     }
-    
+
+    public Long getTenantId() { return tenantId; }
+    public void setTenantId(Long tenantId) { this.tenantId = tenantId; }
+
     @Override
     public String toString() {
         return "GastoAdmin{" +

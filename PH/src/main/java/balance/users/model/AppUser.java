@@ -15,6 +15,9 @@ public class AppUser {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "tenant_id", nullable = false)
+    private Long tenantId;
+
     /** ID del usuario dentro de Keycloak (UUID). */
     @Column(nullable = false, unique = true)
     private String keycloakId;
@@ -60,4 +63,7 @@ public class AppUser {
     public void setStatus(String v)        { this.status = v; }
 
     public LocalDateTime getCreatedAt()    { return createdAt; }
+
+    public Long getTenantId()              { return tenantId; }
+    public void setTenantId(Long tenantId) { this.tenantId = tenantId; }
 }

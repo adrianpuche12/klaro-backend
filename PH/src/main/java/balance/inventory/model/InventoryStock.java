@@ -16,6 +16,9 @@ public class InventoryStock {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "tenant_id", nullable = false)
+    private Long tenantId;
+
     @Column(nullable = false)
     private Integer quantity = 0;
 
@@ -42,4 +45,7 @@ public class InventoryStock {
     public void setStore(Store store) { this.store = store; }
 
     public LocalDateTime getUpdatedAt() { return updatedAt; }
+
+    public Long getTenantId() { return tenantId; }
+    public void setTenantId(Long tenantId) { this.tenantId = tenantId; }
 }

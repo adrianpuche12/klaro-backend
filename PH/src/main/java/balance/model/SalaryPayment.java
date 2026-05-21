@@ -11,7 +11,10 @@ public class SalaryPayment {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    
+
+    @Column(name = "tenant_id", nullable = false)
+    private Long tenantId;
+
     @NotBlank(message = "La descripción es obligatoria")
     @Size(min = 1, max = 200, message = "La descripción debe tener entre 1 y 200 caracteres")
     @Column(nullable = false)
@@ -89,4 +92,7 @@ public class SalaryPayment {
 
     public String getImageUri() { return imageUri; }
     public void setImageUri(String imageUri) { this.imageUri = imageUri; }
+
+    public Long getTenantId() { return tenantId; }
+    public void setTenantId(Long tenantId) { this.tenantId = tenantId; }
 }
