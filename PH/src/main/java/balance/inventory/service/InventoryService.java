@@ -8,6 +8,8 @@ import balance.inventory.model.InventoryMovement;
 import balance.inventory.model.InventoryStock;
 import balance.inventory.repository.InventoryMovementRepository;
 import balance.inventory.repository.InventoryStockRepository;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import balance.model.Store;
 import balance.repository.StoreRepository;
 import balance.tenant.context.TenantSecurityUtils;
@@ -107,6 +109,8 @@ public class InventoryService {
         movement.setReason(dto.getReason());
         movement.setNotes(dto.getNotes());
         movement.setUsername(dto.getUsername());
+        movement.setPerformedBy(dto.getUsername() != null ? dto.getUsername() : currentUsername());
+        movement.setSource(dto.getSource() != null ? dto.getSource() : "MANUAL");
         movement.setProduct(product);
         movement.setStore(store);
         movement.setTenantId(tenantId);
@@ -125,6 +129,15 @@ public class InventoryService {
         TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
         return movementRepository.findByStoreIdAndTenantIdOrderByCreatedAtDesc(storeId, tenantId)
                 .stream().map(MovementDTO::from).toList();
+    }
+
+    /** Retorna el username del usuario autenticado actual, o "system" si no hay sesión. */
+    private String currentUsername() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated()) {
+            return auth.getName();
+        }
+        return "system";
     }
 
     @Transactional

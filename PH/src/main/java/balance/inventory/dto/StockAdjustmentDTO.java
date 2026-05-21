@@ -20,6 +20,8 @@ public class StockAdjustmentDTO {
     private String reason;
     private String notes;
     private String username;
+    /** Origen del movimiento: SALE | CANCEL | MANUAL | SYSTEM */
+    private String source = "MANUAL";
 
     public Long getProductId() { return productId; }
     public void setProductId(Long productId) { this.productId = productId; }
@@ -38,4 +40,7 @@ public class StockAdjustmentDTO {
 
     public String getUsername() { return username; }
     public void setUsername(String username) { this.username = username; }
+
+    public String getSource() { return source; }
+    public void setSource(String source) { this.source = source; }
 }

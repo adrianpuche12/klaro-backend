@@ -16,7 +16,9 @@ import balance.sales.model.Shift;
 import balance.sales.repository.SaleRepository;
 import balance.sales.repository.ShiftRepository;
 import balance.service.FormsService;
+import balance.tax.service.TaxService;
 import balance.tenant.context.TenantContext;
+import balance.tenant.service.TenantConfigService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,10 +49,14 @@ class SalesServiceTest {
     @Mock private StoreRepository     storeRepository;
     @Mock private InventoryService    inventoryService;
     @Mock private FormsService        formsService;
+    @Mock private TenantConfigService tenantConfigService;
+    @Mock private TaxService          taxService;
 
     @BeforeEach
     void setTenantContext() {
         TenantContext.setTenantId(TENANT_ID);
+        org.mockito.Mockito.lenient().when(tenantConfigService.getTimezone()).thenReturn("America/Tegucigalpa");
+        org.mockito.Mockito.lenient().when(taxService.calculateTax(any(), any(), any())).thenReturn(BigDecimal.ZERO);
     }
 
     @AfterEach

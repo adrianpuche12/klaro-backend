@@ -14,7 +14,9 @@ import balance.sales.model.Shift;
 import balance.sales.repository.SaleRepository;
 import balance.sales.repository.ShiftRepository;
 import balance.service.FormsService;
+import balance.tax.service.TaxService;
 import balance.tenant.context.TenantSecurityUtils;
+import balance.tenant.service.TenantConfigService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +39,8 @@ public class SalesService {
     @Autowired private StoreRepository storeRepository;
     @Autowired private InventoryService inventoryService;
     @Autowired private FormsService formsService;
+    @Autowired private TenantConfigService tenantConfigService;
+    @Autowired private TaxService taxService;
 
     @Transactional
     public SaleResponseDTO createSale(Long shiftId, SaleRequestDTO request) {
@@ -55,11 +59,13 @@ public class SalesService {
         sale.setShift(shift);
         sale.setStore(store);
         sale.setUsername(request.getUsername());
-        sale.setSaleDate(LocalDate.now(HONDURAS_TZ));
+        ZoneId tz = ZoneId.of(tenantConfigService.getTimezone());
+        sale.setSaleDate(LocalDate.now(tz));
         sale.setStatus("OPEN");
         sale.setTenantId(tenantId);
 
         BigDecimal subtotal = BigDecimal.ZERO;
+        BigDecimal totalTax = BigDecimal.ZERO;
 
         for (SaleItemRequestDTO itemReq : request.getItems()) {
             Product product = productRepository.findById(itemReq.getProductId())
@@ -75,6 +81,9 @@ public class SalesService {
                     .multiply(BigDecimal.valueOf(itemReq.getQuantity()))
                     .setScale(2, RoundingMode.HALF_UP);
 
+            // Calcular impuesto dinámico del tenant para este producto
+            BigDecimal itemTax = taxService.calculateTax(tenantId, product, itemSubtotal);
+
             SaleItem item = new SaleItem();
             item.setSale(sale);
             item.setProduct(product);
@@ -85,12 +94,12 @@ public class SalesService {
 
             sale.getItems().add(item);
             subtotal = subtotal.add(itemSubtotal);
+            totalTax = totalTax.add(itemTax);
         }
 
-        BigDecimal isv   = subtotal.multiply(ISV_RATE).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal total = subtotal.add(isv);
+        BigDecimal total = subtotal.add(totalTax);
         sale.setSubtotal(subtotal);
-        sale.setIsv(isv);
+        sale.setIsv(totalTax);   // "isv" almacena el impuesto calculado dinámicamente
         sale.setTotal(total);
 
         String paymentMethod = request.getPaymentMethod() != null ? request.getPaymentMethod() : "CASH";
@@ -113,7 +122,7 @@ public class SalesService {
         }
 
         saleRepository.save(sale);
-        deductStock(store.getId(), sale.getItems());
+        deductStock(store.getId(), sale.getItems(), request.getUsername());
         return SaleResponseDTO.from(sale);
     }
 
@@ -126,7 +135,7 @@ public class SalesService {
         if ("CONFIRMED".equals(sale.getStatus())) {
             throw new IllegalStateException("No se puede cancelar una venta ya confirmada");
         }
-        revertStock(sale.getStore().getId(), sale.getItems());
+        revertStock(sale.getStore().getId(), sale.getItems(), "cancel");
         saleRepository.delete(sale);
     }
 
@@ -259,7 +268,7 @@ public class SalesService {
                 sales.size(), totalSubtotal, totalIsv, totalAmount, totalCash, totalCard, summary);
     }
 
-    private void deductStock(Long storeId, List<SaleItem> items) {
+    private void deductStock(Long storeId, List<SaleItem> items, String username) {
         for (SaleItem item : items) {
             if (item.getProduct() == null) continue;
             try {
@@ -268,13 +277,14 @@ public class SalesService {
                 adj.setType("SALIDA");
                 adj.setQuantity(item.getQuantity());
                 adj.setReason("Venta");
-                adj.setUsername("system");
+                adj.setUsername(username);
+                adj.setSource("SALE");
                 inventoryService.adjustSilent(storeId, adj);
             } catch (Exception ignored) {}
         }
     }
 
-    private void revertStock(Long storeId, List<SaleItem> items) {
+    private void revertStock(Long storeId, List<SaleItem> items, String username) {
         for (SaleItem item : items) {
             if (item.getProduct() == null) continue;
             try {
@@ -283,7 +293,8 @@ public class SalesService {
                 adj.setType("ENTRADA");
                 adj.setQuantity(item.getQuantity());
                 adj.setReason("Cancelación de venta");
-                adj.setUsername("system");
+                adj.setUsername(username);
+                adj.setSource("CANCEL");
                 inventoryService.adjustSilent(storeId, adj);
             } catch (Exception ignored) {}
         }
