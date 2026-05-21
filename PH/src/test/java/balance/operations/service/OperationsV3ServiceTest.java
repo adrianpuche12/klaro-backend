@@ -1,5 +1,6 @@
 package balance.operations.service;
 
+import balance.common.enums.SaleStatus;
 import balance.model.ClosingDeposit;
 import balance.model.GastoAdmin;
 import balance.model.SalaryPayment;
@@ -63,7 +64,7 @@ class OperationsV3ServiceTest {
 
     private Sale buildSale(Long id, BigDecimal total) {
         Sale s = new Sale();
-        s.setStatus("OPEN");
+        s.setStatus(SaleStatus.OPEN);
         s.setTotal(total);
         s.setSubtotal(total);
         s.setIsv(BigDecimal.ZERO);

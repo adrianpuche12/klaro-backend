@@ -1,5 +1,6 @@
 package balance.sales.repository;
 
+import balance.common.enums.ShiftStatus;
 import balance.sales.model.Shift;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -10,13 +11,13 @@ import java.util.Optional;
 
 public interface ShiftRepository extends JpaRepository<Shift, Long> {
 
-    Optional<Shift> findByStoreIdAndStatusAndTenantId(Long storeId, String status, Long tenantId);
+    Optional<Shift> findByStoreIdAndStatusAndTenantId(Long storeId, ShiftStatus status, Long tenantId);
 
     List<Shift> findByStoreIdAndTenantIdOrderByOpenedAtDesc(Long storeId, Long tenantId);
 
     Page<Shift> findByStoreIdAndTenantIdOrderByOpenedAtDesc(Long storeId, Long tenantId, Pageable pageable);
 
-    boolean existsByStoreIdAndStatusAndTenantId(Long storeId, String status, Long tenantId);
+    boolean existsByStoreIdAndStatusAndTenantId(Long storeId, ShiftStatus status, Long tenantId);
 
     /** Busca un shift por id validando que pertenezca al tenant. */
     Optional<Shift> findByIdAndTenantId(Long id, Long tenantId);

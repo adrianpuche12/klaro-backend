@@ -2,6 +2,8 @@ package balance.sales.service;
 
 import balance.catalog.model.Product;
 import balance.catalog.repository.ProductRepository;
+import balance.common.enums.SaleStatus;
+import balance.common.enums.ShiftStatus;
 import balance.inventory.dto.StockAdjustmentDTO;
 import balance.inventory.service.InventoryService;
 import balance.model.ClosingDeposit;
@@ -74,7 +76,7 @@ class SalesServiceTest {
         return s;
     }
 
-    private Shift buildShift(Long id, String status) {
+    private Shift buildShift(Long id, ShiftStatus status) {
         Shift shift = new Shift();
         shift.setStore(buildStore(1L, "Danli"));
         shift.setStatus(status);
@@ -109,7 +111,7 @@ class SalesServiceTest {
     @Test
     void createSale_calculatesCorrectly() {
         // ISV_RATE = 0, subtotal = 100 * 2 = 200.00, isv = 0, total = 200.00
-        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, "OPEN")));
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
         when(productRepository.findById(1L)).thenReturn(Optional.of(buildProduct(1L, "Pollo", new BigDecimal("100.00"))));
         when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -122,7 +124,7 @@ class SalesServiceTest {
 
     @Test
     void createSale_isvIsConsistentWithRate() {
-        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, "OPEN")));
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
         when(productRepository.findById(1L)).thenReturn(Optional.of(buildProduct(1L, "Ala", new BigDecimal("33.33"))));
         when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -136,7 +138,7 @@ class SalesServiceTest {
 
     @Test
     void createSale_savesProductNameAndPriceSnapshot() {
-        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, "OPEN")));
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
         when(productRepository.findById(1L)).thenReturn(Optional.of(buildProduct(1L, "Pollo Entero", new BigDecimal("150.00"))));
         ArgumentCaptor<Sale> captor = ArgumentCaptor.forClass(Sale.class);
         when(saleRepository.save(captor.capture())).thenAnswer(inv -> inv.getArgument(0));
@@ -161,7 +163,7 @@ class SalesServiceTest {
 
     @Test
     void createSale_throwsWhenShiftIsClosed() {
-        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, "CLOSED")));
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.CLOSED)));
 
         assertThatThrownBy(() -> salesService.createSale(1L, buildRequest("cajero", 1L, 1)))
                 .isInstanceOf(IllegalStateException.class)
@@ -170,7 +172,7 @@ class SalesServiceTest {
 
     @Test
     void createSale_throwsWhenProductNotFound() {
-        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, "OPEN")));
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
         when(productRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> salesService.createSale(1L, buildRequest("cajero", 99L, 1)))
@@ -182,7 +184,7 @@ class SalesServiceTest {
     void createSale_throwsWhenProductIsInactive() {
         Product inactivo = buildProduct(1L, "Pollo", new BigDecimal("100.00"));
         inactivo.setActive(false);
-        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, "OPEN")));
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
         when(productRepository.findById(1L)).thenReturn(Optional.of(inactivo));
 
         assertThatThrownBy(() -> salesService.createSale(1L, buildRequest("cajero", 1L, 1)))
@@ -200,7 +202,7 @@ class SalesServiceTest {
         req.setUsername("cajero");
         req.setItems(List.of(i1, i2));
 
-        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, "OPEN")));
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
         when(productRepository.findById(1L)).thenReturn(Optional.of(buildProduct(1L, "Pollo", new BigDecimal("100.00"))));
         when(productRepository.findById(2L)).thenReturn(Optional.of(buildProduct(2L, "Ala", new BigDecimal("50.00"))));
         when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -212,7 +214,7 @@ class SalesServiceTest {
 
     @Test
     void createSale_adjustSilentUsesTipoSalida() {
-        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, "OPEN")));
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
         when(productRepository.findById(1L)).thenReturn(Optional.of(buildProduct(1L, "Pollo", new BigDecimal("100.00"))));
         when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         ArgumentCaptor<StockAdjustmentDTO> captor = ArgumentCaptor.forClass(StockAdjustmentDTO.class);
@@ -229,7 +231,7 @@ class SalesServiceTest {
     @Test
     void cancelSale_deletesOpenSale() {
         Sale sale = new Sale();
-        sale.setStatus("OPEN");
+        sale.setStatus(SaleStatus.OPEN);
         sale.setStore(buildStore(1L, "Danli"));
         sale.setTenantId(TENANT_ID);
 
@@ -251,7 +253,7 @@ class SalesServiceTest {
         item.setSubtotal(new BigDecimal("300.00"));
 
         Sale sale = new Sale();
-        sale.setStatus("OPEN");
+        sale.setStatus(SaleStatus.OPEN);
         sale.setStore(buildStore(1L, "Danli"));
         sale.setTenantId(TENANT_ID);
         sale.getItems().add(item);
@@ -278,7 +280,7 @@ class SalesServiceTest {
     @Test
     void cancelSale_throwsWhenSaleIsConfirmed() {
         Sale sale = new Sale();
-        sale.setStatus("CONFIRMED");
+        sale.setStatus(SaleStatus.CONFIRMED);
         sale.setStore(buildStore(1L, "Danli"));
         sale.setTenantId(TENANT_ID);
 
@@ -293,7 +295,7 @@ class SalesServiceTest {
 
     @Test
     void closeShift_throwsWhenShiftAlreadyClosed() {
-        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, "CLOSED")));
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.CLOSED)));
 
         assertThatThrownBy(() -> salesService.closeShift(1L, "admin"))
                 .isInstanceOf(IllegalStateException.class)
@@ -302,7 +304,7 @@ class SalesServiceTest {
 
     @Test
     void closeShift_throwsWhenNoOpenSales() {
-        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, "OPEN")));
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
         when(saleRepository.findOpenByShiftIdAndTenantId(1L, TENANT_ID)).thenReturn(List.of());
 
         assertThatThrownBy(() -> salesService.closeShift(1L, "admin"))
@@ -312,12 +314,12 @@ class SalesServiceTest {
 
     @Test
     void closeShift_confirmsAllOpenSalesAndSavesShift() {
-        Shift shift = buildShift(1L, "OPEN");
-        Sale sale1 = new Sale(); sale1.setStatus("OPEN");
+        Shift shift = buildShift(1L, ShiftStatus.OPEN);
+        Sale sale1 = new Sale(); sale1.setStatus(SaleStatus.OPEN);
         sale1.setTotal(new BigDecimal("115.00"));
         sale1.setStore(buildStore(1L, "Danli"));
         sale1.setTenantId(TENANT_ID);
-        Sale sale2 = new Sale(); sale2.setStatus("OPEN");
+        Sale sale2 = new Sale(); sale2.setStatus(SaleStatus.OPEN);
         sale2.setTotal(new BigDecimal("230.00"));
         sale2.setStore(buildStore(1L, "Danli"));
         sale2.setTenantId(TENANT_ID);
@@ -333,9 +335,9 @@ class SalesServiceTest {
 
         salesService.closeShift(1L, "admin");
 
-        assertThat(sale1.getStatus()).isEqualTo("CONFIRMED");
-        assertThat(sale2.getStatus()).isEqualTo("CONFIRMED");
-        assertThat(shift.getStatus()).isEqualTo("CLOSED");
+        assertThat(sale1.getStatus()).isEqualTo(SaleStatus.CONFIRMED);
+        assertThat(sale2.getStatus()).isEqualTo(SaleStatus.CONFIRMED);
+        assertThat(shift.getStatus()).isEqualTo(ShiftStatus.CLOSED);
         assertThat(shift.getClosedAt()).isNotNull();
     }
 }

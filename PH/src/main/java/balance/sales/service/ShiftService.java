@@ -1,5 +1,6 @@
 package balance.sales.service;
 
+import balance.common.enums.ShiftStatus;
 import balance.model.Store;
 import balance.repository.StoreRepository;
 import balance.sales.dto.ShiftResponseDTO;
@@ -28,14 +29,14 @@ public class ShiftService {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         Store store = TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
 
-        if (shiftRepository.existsByStoreIdAndStatusAndTenantId(storeId, "OPEN", tenantId)) {
+        if (shiftRepository.existsByStoreIdAndStatusAndTenantId(storeId, ShiftStatus.OPEN, tenantId)) {
             throw new IllegalStateException("Ya existe un turno abierto para este local");
         }
 
         Shift shift = new Shift();
         shift.setStore(store);
         shift.setUsername(username);
-        shift.setStatus("OPEN");
+        shift.setStatus(ShiftStatus.OPEN);
         shift.setCode(generateCode(store));
         shift.setTenantId(tenantId);
         shiftRepository.save(shift);
@@ -47,10 +48,10 @@ public class ShiftService {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         Shift shift = shiftRepository.findByIdAndTenantId(shiftId, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
-        if ("CLOSED".equals(shift.getStatus())) {
+        if (ShiftStatus.CLOSED == shift.getStatus()) {
             throw new IllegalStateException("El turno ya está cerrado");
         }
-        shift.setStatus("CLOSED");
+        shift.setStatus(ShiftStatus.CLOSED);
         shift.setClosedAt(LocalDateTime.now());
         shiftRepository.save(shift);
         return ShiftResponseDTO.from(shift);
@@ -59,7 +60,7 @@ public class ShiftService {
     public ShiftResponseDTO getActiveShift(Long storeId) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
-        return shiftRepository.findByStoreIdAndStatusAndTenantId(storeId, "OPEN", tenantId)
+        return shiftRepository.findByStoreIdAndStatusAndTenantId(storeId, ShiftStatus.OPEN, tenantId)
                 .map(ShiftResponseDTO::from)
                 .orElse(null);
     }

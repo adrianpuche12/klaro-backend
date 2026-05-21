@@ -1,6 +1,8 @@
 package balance.dashboard.service;
 
 import balance.catalog.repository.ProductRepository;
+import balance.common.enums.SaleStatus;
+import balance.common.enums.ShiftStatus;
 import balance.dashboard.dto.DashboardDTO;
 import balance.inventory.model.InventoryStock;
 import balance.inventory.repository.InventoryStockRepository;
@@ -61,7 +63,7 @@ class DashboardServiceTest {
         org.mockito.Mockito.lenient().when(sh.getId()).thenReturn(id);
         org.mockito.Mockito.lenient().when(sh.getCode()).thenReturn(code);
         org.mockito.Mockito.lenient().when(sh.getUsername()).thenReturn(user);
-        org.mockito.Mockito.lenient().when(sh.getStatus()).thenReturn("OPEN");
+        org.mockito.Mockito.lenient().when(sh.getStatus()).thenReturn(ShiftStatus.OPEN);
         org.mockito.Mockito.lenient().when(sh.getOpenedAt()).thenReturn(LocalDateTime.now());
         org.mockito.Mockito.lenient().when(sh.getStore()).thenReturn(buildStore(STORE_ID));
         return sh;
@@ -70,7 +72,7 @@ class DashboardServiceTest {
     private Sale buildSale(BigDecimal total) {
         Sale s = new Sale();
         s.setTotal(total); s.setSubtotal(total); s.setIsv(BigDecimal.ZERO);
-        s.setStatus("OPEN"); s.setSaleDate(LocalDate.now()); s.setUsername("cajero");
+        s.setStatus(SaleStatus.OPEN); s.setSaleDate(LocalDate.now()); s.setUsername("cajero");
         s.setStore(buildStore(STORE_ID)); s.setTenantId(TENANT_ID);
         return s;
     }
@@ -84,7 +86,7 @@ class DashboardServiceTest {
     }
 
     private void stubEmptyStoreData(Long storeId) {
-        lenient().when(shiftRepository.findByStoreIdAndStatusAndTenantId(storeId, "OPEN", TENANT_ID))
+        lenient().when(shiftRepository.findByStoreIdAndStatusAndTenantId(storeId, ShiftStatus.OPEN, TENANT_ID))
                 .thenReturn(Optional.empty());
         lenient().when(stockRepository.countLowStockByStoreIdAndTenantId(storeId, TENANT_ID))
                 .thenReturn(0L);
@@ -142,7 +144,7 @@ class DashboardServiceTest {
         Store store = buildStore(STORE_ID);
         Shift shift = buildShift(1L, "T-20260521-0900-LOC", "cajero01");
         when(storeRepository.findByTenantIdAndActive(TENANT_ID, true)).thenReturn(List.of(store));
-        when(shiftRepository.findByStoreIdAndStatusAndTenantId(STORE_ID, "OPEN", TENANT_ID))
+        when(shiftRepository.findByStoreIdAndStatusAndTenantId(STORE_ID, ShiftStatus.OPEN, TENANT_ID))
                 .thenReturn(Optional.of(shift));
         when(saleRepository.findOpenByShiftIdAndTenantId(1L, TENANT_ID)).thenReturn(List.of());
         when(stockRepository.countLowStockByStoreIdAndTenantId(STORE_ID, TENANT_ID)).thenReturn(0L);
@@ -166,7 +168,7 @@ class DashboardServiceTest {
         Sale s1 = buildSale(new BigDecimal("150.00"));
         Sale s2 = buildSale(new BigDecimal("250.00"));
         when(storeRepository.findByTenantIdAndActive(TENANT_ID, true)).thenReturn(List.of(store));
-        when(shiftRepository.findByStoreIdAndStatusAndTenantId(STORE_ID, "OPEN", TENANT_ID))
+        when(shiftRepository.findByStoreIdAndStatusAndTenantId(STORE_ID, ShiftStatus.OPEN, TENANT_ID))
                 .thenReturn(Optional.of(shift));
         when(saleRepository.findOpenByShiftIdAndTenantId(1L, TENANT_ID)).thenReturn(List.of(s1, s2));
         when(stockRepository.countLowStockByStoreIdAndTenantId(STORE_ID, TENANT_ID)).thenReturn(0L);
@@ -190,7 +192,7 @@ class DashboardServiceTest {
         InventoryStock stock1 = buildStock(10, new BigDecimal("50.00"));  // 500
         InventoryStock stock2 = buildStock(5,  new BigDecimal("200.00")); // 1000
         when(storeRepository.findByTenantIdAndActive(TENANT_ID, true)).thenReturn(List.of(store));
-        when(shiftRepository.findByStoreIdAndStatusAndTenantId(STORE_ID, "OPEN", TENANT_ID))
+        when(shiftRepository.findByStoreIdAndStatusAndTenantId(STORE_ID, ShiftStatus.OPEN, TENANT_ID))
                 .thenReturn(Optional.empty());
         when(stockRepository.countLowStockByStoreIdAndTenantId(STORE_ID, TENANT_ID)).thenReturn(2L);
         when(productRepository.findByStoreIdOrderByNameAsc(STORE_ID)).thenReturn(List.of());

@@ -19,7 +19,7 @@ public class AppUserResponseDTO {
         dto.id        = u.getId();
         dto.fullName  = u.getFullName();
         dto.username  = u.getUsername();
-        dto.status    = u.getStatus();
+        dto.status    = u.getStatus() != null ? u.getStatus().name() : null;
         dto.createdAt = u.getCreatedAt();
         if (u.getStore() != null) {
             dto.storeId   = u.getStore().getId();

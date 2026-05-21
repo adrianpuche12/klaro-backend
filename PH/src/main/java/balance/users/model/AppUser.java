@@ -1,5 +1,6 @@
 package balance.users.model;
 
+import balance.common.enums.AppUserStatus;
 import balance.model.Store;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
@@ -38,8 +39,9 @@ public class AppUser {
     private Store store;
 
     /** ACTIVE = puede operar / SUSPENDED = no puede iniciar sesión. */
-    @Column(nullable = false)
-    private String status = "ACTIVE";
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private AppUserStatus status = AppUserStatus.ACTIVE;
 
     @CreationTimestamp
     @Column(updatable = false)
@@ -59,8 +61,8 @@ public class AppUser {
     public Store getStore()                { return store; }
     public void setStore(Store v)          { this.store = v; }
 
-    public String getStatus()              { return status; }
-    public void setStatus(String v)        { this.status = v; }
+    public AppUserStatus getStatus()         { return status; }
+    public void setStatus(AppUserStatus v)  { this.status = v; }
 
     public LocalDateTime getCreatedAt()    { return createdAt; }
 

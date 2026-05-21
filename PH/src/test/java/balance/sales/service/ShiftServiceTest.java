@@ -1,5 +1,6 @@
 package balance.sales.service;
 
+import balance.common.enums.ShiftStatus;
 import balance.model.Store;
 import balance.repository.StoreRepository;
 import balance.sales.dto.ShiftResponseDTO;
@@ -50,7 +51,7 @@ class ShiftServiceTest {
         return s;
     }
 
-    private Shift buildShift(Long id, Store store, String status) {
+    private Shift buildShift(Long id, Store store, ShiftStatus status) {
         Shift shift = new Shift();
         shift.setStore(store);
         shift.setStatus(status);
@@ -65,7 +66,7 @@ class ShiftServiceTest {
     @Test
     void openShift_codeMatchesExpectedPattern() {
         when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
-        when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, "OPEN", TENANT_ID)).thenReturn(false);
+        when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, ShiftStatus.OPEN, TENANT_ID)).thenReturn(false);
         when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ShiftResponseDTO result = shiftService.openShift(1L, "cajero01");
@@ -76,7 +77,7 @@ class ShiftServiceTest {
     @Test
     void openShift_codeEndsWithFirstThreeLettersOfStoreName() {
         when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
-        when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, "OPEN", TENANT_ID)).thenReturn(false);
+        when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, ShiftStatus.OPEN, TENANT_ID)).thenReturn(false);
         when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ShiftResponseDTO result = shiftService.openShift(1L, "cajero01");
@@ -87,7 +88,7 @@ class ShiftServiceTest {
     @Test
     void openShift_codeStripsNonLettersFromStoreName() {
         when(storeRepository.findByIdAndTenantId(2L, TENANT_ID)).thenReturn(Optional.of(buildStore(2L, "El Paraiso")));
-        when(shiftRepository.existsByStoreIdAndStatusAndTenantId(2L, "OPEN", TENANT_ID)).thenReturn(false);
+        when(shiftRepository.existsByStoreIdAndStatusAndTenantId(2L, ShiftStatus.OPEN, TENANT_ID)).thenReturn(false);
         when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ShiftResponseDTO result = shiftService.openShift(2L, "cajero02");
@@ -101,7 +102,7 @@ class ShiftServiceTest {
                 .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
 
         when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
-        when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, "OPEN", TENANT_ID)).thenReturn(false);
+        when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, ShiftStatus.OPEN, TENANT_ID)).thenReturn(false);
         when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ShiftResponseDTO result = shiftService.openShift(1L, "cajero01");
@@ -112,7 +113,7 @@ class ShiftServiceTest {
     @Test
     void openShift_setsStatusToOpen() {
         when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
-        when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, "OPEN", TENANT_ID)).thenReturn(false);
+        when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, ShiftStatus.OPEN, TENANT_ID)).thenReturn(false);
         when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ShiftResponseDTO result = shiftService.openShift(1L, "cajero01");
@@ -133,7 +134,7 @@ class ShiftServiceTest {
     @Test
     void openShift_throwsWhenShiftAlreadyOpen() {
         when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
-        when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, "OPEN", TENANT_ID)).thenReturn(true);
+        when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, ShiftStatus.OPEN, TENANT_ID)).thenReturn(true);
 
         assertThatThrownBy(() -> shiftService.openShift(1L, "cajero01"))
                 .isInstanceOf(IllegalStateException.class)
@@ -145,7 +146,7 @@ class ShiftServiceTest {
     @Test
     void closeShift_setsStatusToClosedAndRegistersClosedAt() {
         Store store = buildStore(1L, "Danli");
-        Shift shift = buildShift(1L, store, "OPEN");
+        Shift shift = buildShift(1L, store, ShiftStatus.OPEN);
 
         when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(shift));
         when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -168,7 +169,7 @@ class ShiftServiceTest {
     @Test
     void closeShift_throwsWhenAlreadyClosed() {
         Store store = buildStore(1L, "Danli");
-        Shift shift = buildShift(1L, store, "CLOSED");
+        Shift shift = buildShift(1L, store, ShiftStatus.CLOSED);
 
         when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(shift));
 
@@ -182,7 +183,7 @@ class ShiftServiceTest {
     @Test
     void getActiveShift_returnsNullWhenNoActiveShift() {
         when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
-        when(shiftRepository.findByStoreIdAndStatusAndTenantId(1L, "OPEN", TENANT_ID)).thenReturn(Optional.empty());
+        when(shiftRepository.findByStoreIdAndStatusAndTenantId(1L, ShiftStatus.OPEN, TENANT_ID)).thenReturn(Optional.empty());
 
         ShiftResponseDTO result = shiftService.getActiveShift(1L);
 
@@ -192,10 +193,10 @@ class ShiftServiceTest {
     @Test
     void getActiveShift_returnsShiftWhenExists() {
         Store store = buildStore(1L, "Danli");
-        Shift shift = buildShift(1L, store, "OPEN");
+        Shift shift = buildShift(1L, store, ShiftStatus.OPEN);
 
         when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
-        when(shiftRepository.findByStoreIdAndStatusAndTenantId(1L, "OPEN", TENANT_ID)).thenReturn(Optional.of(shift));
+        when(shiftRepository.findByStoreIdAndStatusAndTenantId(1L, ShiftStatus.OPEN, TENANT_ID)).thenReturn(Optional.of(shift));
 
         ShiftResponseDTO result = shiftService.getActiveShift(1L);
 

@@ -19,7 +19,7 @@ public class ShiftResponseDTO {
         dto.id        = s.getId();
         dto.code      = s.getCode();
         dto.username  = s.getUsername();
-        dto.status    = s.getStatus();
+        dto.status    = s.getStatus() != null ? s.getStatus().name() : null;
         dto.openedAt  = s.getOpenedAt();
         dto.closedAt  = s.getClosedAt();
         if (s.getStore() != null) {

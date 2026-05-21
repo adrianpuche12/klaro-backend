@@ -1,5 +1,6 @@
 package balance.sales.repository;
 
+import balance.common.enums.ShiftStatus;
 import balance.model.Store;
 import balance.repository.StoreRepository;
 import balance.sales.model.Shift;
@@ -51,11 +52,11 @@ class ShiftRepositoryIT {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private Shift saveShift(String status, String code) {
+    private Shift saveShift(ShiftStatus status, String code) {
         return saveShift(status, code, TENANT_ID);
     }
 
-    private Shift saveShift(String status, String code, Long tenantId) {
+    private Shift saveShift(ShiftStatus status, String code, Long tenantId) {
         Shift shift = new Shift();
         shift.setStore(store);
         shift.setUsername("cajero01");
@@ -69,30 +70,30 @@ class ShiftRepositoryIT {
 
     @Test
     void existsByStoreIdAndStatusAndTenantId_returnsTrueWhenOpenShiftExists() {
-        saveShift("OPEN", "T-20260514-0900-DAN");
+        saveShift(ShiftStatus.OPEN, "T-20260514-0900-DAN");
 
         boolean exists = shiftRepository.existsByStoreIdAndStatusAndTenantId(
-                store.getId(), "OPEN", TENANT_ID);
+                store.getId(), ShiftStatus.OPEN, TENANT_ID);
 
         assertThat(exists).isTrue();
     }
 
     @Test
     void existsByStoreIdAndStatusAndTenantId_returnsFalseWhenNoOpenShift() {
-        saveShift("CLOSED", "T-20260514-0900-DAN");
+        saveShift(ShiftStatus.CLOSED, "T-20260514-0900-DAN");
 
         boolean exists = shiftRepository.existsByStoreIdAndStatusAndTenantId(
-                store.getId(), "OPEN", TENANT_ID);
+                store.getId(), ShiftStatus.OPEN, TENANT_ID);
 
         assertThat(exists).isFalse();
     }
 
     @Test
     void existsByStoreIdAndStatusAndTenantId_returnsFalseForDifferentTenant() {
-        saveShift("OPEN", "T-20260514-0900-DAN", OTHER_TENANT_ID);
+        saveShift(ShiftStatus.OPEN, "T-20260514-0900-DAN", OTHER_TENANT_ID);
 
         boolean exists = shiftRepository.existsByStoreIdAndStatusAndTenantId(
-                store.getId(), "OPEN", TENANT_ID);
+                store.getId(), ShiftStatus.OPEN, TENANT_ID);
 
         assertThat(exists).isFalse();
     }
@@ -101,10 +102,10 @@ class ShiftRepositoryIT {
 
     @Test
     void findByStoreIdAndStatusAndTenantId_returnsOpenShift() {
-        Shift saved = saveShift("OPEN", "T-20260514-0900-DAN");
+        Shift saved = saveShift(ShiftStatus.OPEN, "T-20260514-0900-DAN");
 
         Optional<Shift> result = shiftRepository.findByStoreIdAndStatusAndTenantId(
-                store.getId(), "OPEN", TENANT_ID);
+                store.getId(), ShiftStatus.OPEN, TENANT_ID);
 
         assertThat(result).isPresent();
         assertThat(result.get().getCode()).isEqualTo("T-20260514-0900-DAN");
@@ -112,10 +113,10 @@ class ShiftRepositoryIT {
 
     @Test
     void findByStoreIdAndStatusAndTenantId_returnsEmptyForDifferentTenant() {
-        saveShift("OPEN", "T-20260514-0900-DAN", OTHER_TENANT_ID);
+        saveShift(ShiftStatus.OPEN, "T-20260514-0900-DAN", OTHER_TENANT_ID);
 
         Optional<Shift> result = shiftRepository.findByStoreIdAndStatusAndTenantId(
-                store.getId(), "OPEN", TENANT_ID);
+                store.getId(), ShiftStatus.OPEN, TENANT_ID);
 
         assertThat(result).isEmpty();
     }
@@ -124,11 +125,11 @@ class ShiftRepositoryIT {
 
     @Test
     void findByStoreIdAndTenantIdOrderByOpenedAtDesc_returnsMostRecentFirst() throws InterruptedException {
-        saveShift("CLOSED", "T-20260514-0800-DAN");
+        saveShift(ShiftStatus.CLOSED, "T-20260514-0800-DAN");
         Thread.sleep(10);
-        saveShift("CLOSED", "T-20260514-0900-DAN");
+        saveShift(ShiftStatus.CLOSED, "T-20260514-0900-DAN");
         Thread.sleep(10);
-        saveShift("OPEN", "T-20260514-1000-DAN");
+        saveShift(ShiftStatus.OPEN, "T-20260514-1000-DAN");
 
         List<Shift> result = shiftRepository.findByStoreIdAndTenantIdOrderByOpenedAtDesc(
                 store.getId(), TENANT_ID);
@@ -148,8 +149,8 @@ class ShiftRepositoryIT {
 
     @Test
     void findByStoreIdAndTenantIdOrderByOpenedAtDesc_excludesOtherTenants() {
-        saveShift("OPEN", "T-20260514-0900-DAN", TENANT_ID);
-        saveShift("OPEN", "T-20260514-0900-ELP", OTHER_TENANT_ID);
+        saveShift(ShiftStatus.OPEN, "T-20260514-0900-DAN", TENANT_ID);
+        saveShift(ShiftStatus.OPEN, "T-20260514-0900-ELP", OTHER_TENANT_ID);
 
         List<Shift> result = shiftRepository.findByStoreIdAndTenantIdOrderByOpenedAtDesc(
                 store.getId(), TENANT_ID);

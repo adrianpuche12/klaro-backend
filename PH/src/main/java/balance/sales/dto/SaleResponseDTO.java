@@ -27,7 +27,7 @@ public class SaleResponseDTO {
         dto.id        = sale.getId();
         dto.username  = sale.getUsername();
         dto.saleDate  = sale.getSaleDate();
-        dto.status    = sale.getStatus();
+        dto.status    = sale.getStatus() != null ? sale.getStatus().name() : null;
         dto.subtotal  = sale.getSubtotal();
         dto.isv       = sale.getIsv();
         dto.total     = sale.getTotal();

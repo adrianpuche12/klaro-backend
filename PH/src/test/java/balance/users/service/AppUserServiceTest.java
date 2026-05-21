@@ -1,5 +1,6 @@
 package balance.users.service;
 
+import balance.common.enums.AppUserStatus;
 import balance.model.Store;
 import balance.repository.StoreRepository;
 import balance.tenant.context.TenantContext;
@@ -64,7 +65,7 @@ class AppUserServiceTest {
         return s;
     }
 
-    private AppUser buildUser(Long id, String username, String status) {
+    private AppUser buildUser(Long id, String username, AppUserStatus status) {
         AppUser u = new AppUser();
         u.setUsername(username);
         u.setFullName("Empleado Test");
@@ -140,7 +141,7 @@ class AppUserServiceTest {
 
         ArgumentCaptor<AppUser> captor = ArgumentCaptor.forClass(AppUser.class);
         verify(userRepository).save(captor.capture());
-        assertThat(captor.getValue().getStatus()).isEqualTo("ACTIVE");
+        assertThat(captor.getValue().getStatus()).isEqualTo(AppUserStatus.ACTIVE);
     }
 
     // ── create — restricción de roles ─────────────────────────────────────────
@@ -206,7 +207,7 @@ class AppUserServiceTest {
 
     @Test
     void suspend_changesStatusToSuspended() {
-        AppUser user = buildUser(1L, "cajero01", "ACTIVE");
+        AppUser user = buildUser(1L, "cajero01", AppUserStatus.ACTIVE);
         when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -217,7 +218,7 @@ class AppUserServiceTest {
 
     @Test
     void suspend_disablesUserInKeycloak() {
-        AppUser user = buildUser(1L, "cajero01", "ACTIVE");
+        AppUser user = buildUser(1L, "cajero01", AppUserStatus.ACTIVE);
         when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -228,7 +229,7 @@ class AppUserServiceTest {
 
     @Test
     void suspend_throwsWhenUserAlreadySuspended() {
-        AppUser user = buildUser(1L, "cajero01", "SUSPENDED");
+        AppUser user = buildUser(1L, "cajero01", AppUserStatus.SUSPENDED);
         when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
 
         assertThatThrownBy(() -> appUserService.suspend(1L))
@@ -249,7 +250,7 @@ class AppUserServiceTest {
 
     @Test
     void activate_changesStatusToActive() {
-        AppUser user = buildUser(1L, "cajero01", "SUSPENDED");
+        AppUser user = buildUser(1L, "cajero01", AppUserStatus.SUSPENDED);
         when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -260,7 +261,7 @@ class AppUserServiceTest {
 
     @Test
     void activate_enablesUserInKeycloak() {
-        AppUser user = buildUser(1L, "cajero01", "SUSPENDED");
+        AppUser user = buildUser(1L, "cajero01", AppUserStatus.SUSPENDED);
         when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -271,7 +272,7 @@ class AppUserServiceTest {
 
     @Test
     void activate_throwsWhenUserAlreadyActive() {
-        AppUser user = buildUser(1L, "cajero01", "ACTIVE");
+        AppUser user = buildUser(1L, "cajero01", AppUserStatus.ACTIVE);
         when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
 
         assertThatThrownBy(() -> appUserService.activate(1L))
@@ -283,7 +284,7 @@ class AppUserServiceTest {
 
     @Test
     void reassign_changesUserStore() {
-        AppUser user = buildUser(1L, "cajero01", "ACTIVE");
+        AppUser user = buildUser(1L, "cajero01", AppUserStatus.ACTIVE);
         Store newStore = buildStore(2L, "El Paraíso");
 
         when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
@@ -297,7 +298,7 @@ class AppUserServiceTest {
 
     @Test
     void reassign_throwsWhenNewStoreNotFound() {
-        AppUser user = buildUser(1L, "cajero01", "ACTIVE");
+        AppUser user = buildUser(1L, "cajero01", AppUserStatus.ACTIVE);
         when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
         when(storeRepository.findByIdAndTenantId(99L, TENANT_ID)).thenReturn(Optional.empty());
 
@@ -310,7 +311,7 @@ class AppUserServiceTest {
 
     @Test
     void delete_removesUserFromKeycloakAndDatabase() {
-        AppUser user = buildUser(1L, "cajero01", "ACTIVE");
+        AppUser user = buildUser(1L, "cajero01", AppUserStatus.ACTIVE);
         when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
 
         appUserService.delete(1L);
@@ -321,7 +322,7 @@ class AppUserServiceTest {
 
     @Test
     void delete_callsKeycloakBeforeDatabase() {
-        AppUser user = buildUser(1L, "cajero01", "ACTIVE");
+        AppUser user = buildUser(1L, "cajero01", AppUserStatus.ACTIVE);
         when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
 
         var inOrder = inOrder(keycloakAdmin, userRepository);
@@ -334,7 +335,7 @@ class AppUserServiceTest {
 
     @Test
     void findByUsername_normalizesToLowercase() {
-        AppUser user = buildUser(1L, "cajero01", "ACTIVE");
+        AppUser user = buildUser(1L, "cajero01", AppUserStatus.ACTIVE);
         when(userRepository.findByUsernameAndTenantId("cajero01", TENANT_ID)).thenReturn(Optional.of(user));
 
         appUserService.findByUsername("CAJERO01");

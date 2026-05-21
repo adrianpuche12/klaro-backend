@@ -1,5 +1,6 @@
 package balance.sales.model;
 
+import balance.common.enums.SaleStatus;
 import balance.model.Store;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
@@ -39,8 +40,9 @@ public class Sale {
     @Column(nullable = false)
     private LocalDate saleDate;
 
-    @Column(nullable = false)
-    private String status = "OPEN"; // OPEN | CONFIRMED
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private SaleStatus status = SaleStatus.OPEN;
 
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal subtotal = BigDecimal.ZERO;
@@ -81,8 +83,8 @@ public class Sale {
     public LocalDate getSaleDate() { return saleDate; }
     public void setSaleDate(LocalDate saleDate) { this.saleDate = saleDate; }
 
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
+    public SaleStatus getStatus() { return status; }
+    public void setStatus(SaleStatus status) { this.status = status; }
 
     public BigDecimal getSubtotal() { return subtotal; }
     public void setSubtotal(BigDecimal subtotal) { this.subtotal = subtotal; }

@@ -11,6 +11,7 @@ import balance.sales.model.Shift;
 import balance.sales.repository.SaleRepository;
 import balance.sales.repository.ShiftRepository;
 import balance.tenant.context.TenantSecurityUtils;
+import balance.common.enums.ShiftStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -64,7 +65,7 @@ public class DashboardService {
         dto.setStoreName(store.getName());
 
         Optional<Shift> activeShift = shiftRepository
-                .findByStoreIdAndStatusAndTenantId(store.getId(), "OPEN", tenantId);
+                .findByStoreIdAndStatusAndTenantId(store.getId(), ShiftStatus.OPEN, tenantId);
 
         if (activeShift.isPresent()) {
             Shift shift = activeShift.get();

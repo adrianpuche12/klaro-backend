@@ -2,6 +2,8 @@ package balance.sales.service;
 
 import balance.catalog.model.Product;
 import balance.catalog.repository.ProductRepository;
+import balance.common.enums.SaleStatus;
+import balance.common.enums.ShiftStatus;
 import balance.inventory.dto.StockAdjustmentDTO;
 import balance.inventory.service.InventoryService;
 import balance.model.ClosingDeposit;
@@ -49,7 +51,7 @@ public class SalesService {
         Shift shift = shiftRepository.findByIdAndTenantId(shiftId, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
 
-        if ("CLOSED".equals(shift.getStatus())) {
+        if (ShiftStatus.CLOSED == shift.getStatus()) {
             throw new IllegalStateException("El turno ya está cerrado");
         }
 
@@ -61,7 +63,7 @@ public class SalesService {
         sale.setUsername(request.getUsername());
         ZoneId tz = ZoneId.of(tenantConfigService.getTimezone());
         sale.setSaleDate(LocalDate.now(tz));
-        sale.setStatus("OPEN");
+        sale.setStatus(SaleStatus.OPEN);
         sale.setTenantId(tenantId);
 
         BigDecimal subtotal = BigDecimal.ZERO;
@@ -132,7 +134,7 @@ public class SalesService {
         Sale sale = saleRepository.findByIdAndTenantId(saleId, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Venta no encontrada"));
 
-        if ("CONFIRMED".equals(sale.getStatus())) {
+        if (SaleStatus.CONFIRMED == sale.getStatus()) {
             throw new IllegalStateException("No se puede cancelar una venta ya confirmada");
         }
         revertStock(sale.getStore().getId(), sale.getItems(), "cancel");
@@ -194,7 +196,7 @@ public class SalesService {
         Shift shift = shiftRepository.findByIdAndTenantId(shiftId, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
 
-        if ("CLOSED".equals(shift.getStatus())) {
+        if (ShiftStatus.CLOSED == shift.getStatus()) {
             throw new IllegalStateException("El turno ya está cerrado");
         }
 
@@ -218,11 +220,11 @@ public class SalesService {
         ClosingDeposit saved = formsService.saveClosingDeposit(deposit);
 
         openSales.forEach(sale -> {
-            sale.setStatus("CONFIRMED");
+            sale.setStatus(SaleStatus.CONFIRMED);
             saleRepository.save(sale);
         });
 
-        shift.setStatus("CLOSED");
+        shift.setStatus(ShiftStatus.CLOSED);
         shift.setClosedAt(java.time.LocalDateTime.now());
         shiftRepository.save(shift);
 
@@ -274,7 +276,7 @@ public class SalesService {
             try {
                 StockAdjustmentDTO adj = new StockAdjustmentDTO();
                 adj.setProductId(item.getProduct().getId());
-                adj.setType("SALIDA");
+                adj.setType("SALIDA"); // StockAdjustmentDTO mantiene String para compatibilidad API
                 adj.setQuantity(item.getQuantity());
                 adj.setReason("Venta");
                 adj.setUsername(username);
@@ -290,7 +292,7 @@ public class SalesService {
             try {
                 StockAdjustmentDTO adj = new StockAdjustmentDTO();
                 adj.setProductId(item.getProduct().getId());
-                adj.setType("ENTRADA");
+                adj.setType("ENTRADA"); // StockAdjustmentDTO mantiene String para compatibilidad API
                 adj.setQuantity(item.getQuantity());
                 adj.setReason("Cancelación de venta");
                 adj.setUsername(username);

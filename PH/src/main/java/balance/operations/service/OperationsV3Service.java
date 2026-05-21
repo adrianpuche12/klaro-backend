@@ -131,7 +131,9 @@ public class OperationsV3Service {
                 "SALE", s.getId(), s.getSaleDate(), s.getTotal(),
                 s.getStore() != null ? s.getStore().getId() : null,
                 s.getStore() != null ? s.getStore().getName() : null,
-                s.getUsername(), "Venta", s.getStatus(), s.getPaymentMethod(), null
+                s.getUsername(), "Venta",
+                s.getStatus() != null ? s.getStatus().name() : null,
+                s.getPaymentMethod(), null
         )).toList();
     }
 

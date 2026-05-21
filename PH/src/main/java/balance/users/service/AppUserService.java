@@ -1,5 +1,6 @@
 package balance.users.service;
 
+import balance.common.enums.AppUserStatus;
 import balance.model.Store;
 import balance.repository.StoreRepository;
 import balance.tenant.context.TenantSecurityUtils;
@@ -69,7 +70,7 @@ public class AppUserService {
         user.setFullName(dto.getFullName().trim());
         user.setUsername(dto.getUsername().trim().toLowerCase());
         user.setStore(store);
-        user.setStatus("ACTIVE");
+        user.setStatus(AppUserStatus.ACTIVE);
         user.setTenantId(tenantId);
 
         return AppUserResponseDTO.from(userRepository.save(user));
@@ -78,22 +79,22 @@ public class AppUserService {
     @Transactional
     public AppUserResponseDTO suspend(Long id) {
         AppUser user = findOrThrow(id);
-        if ("SUSPENDED".equals(user.getStatus())) {
+        if (AppUserStatus.SUSPENDED == user.getStatus()) {
             throw new IllegalStateException("El usuario ya está suspendido");
         }
         keycloakAdmin.setUserEnabled(user.getKeycloakId(), false);
-        user.setStatus("SUSPENDED");
+        user.setStatus(AppUserStatus.SUSPENDED);
         return AppUserResponseDTO.from(userRepository.save(user));
     }
 
     @Transactional
     public AppUserResponseDTO activate(Long id) {
         AppUser user = findOrThrow(id);
-        if ("ACTIVE".equals(user.getStatus())) {
+        if (AppUserStatus.ACTIVE == user.getStatus()) {
             throw new IllegalStateException("El usuario ya está activo");
         }
         keycloakAdmin.setUserEnabled(user.getKeycloakId(), true);
-        user.setStatus("ACTIVE");
+        user.setStatus(AppUserStatus.ACTIVE);
         return AppUserResponseDTO.from(userRepository.save(user));
     }
 

@@ -1,5 +1,7 @@
 package balance.sales.repository;
 
+import balance.common.enums.SaleStatus;
+import balance.common.enums.ShiftStatus;
 import balance.model.Store;
 import balance.repository.StoreRepository;
 import balance.sales.model.Sale;
@@ -56,7 +58,7 @@ class SaleRepositoryIT {
         shift = new Shift();
         shift.setStore(store);
         shift.setUsername("cajero01");
-        shift.setStatus("OPEN");
+        shift.setStatus(ShiftStatus.OPEN);
         shift.setCode("T-20260514-0900-DAN");
         shift.setTenantId(TENANT_ID);
         shift = shiftRepository.save(shift);
@@ -64,11 +66,11 @@ class SaleRepositoryIT {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private Sale saveSale(String status, BigDecimal total) {
+    private Sale saveSale(SaleStatus status, BigDecimal total) {
         return saveSale(status, total, TENANT_ID);
     }
 
-    private Sale saveSale(String status, BigDecimal total, Long tenantId) {
+    private Sale saveSale(SaleStatus status, BigDecimal total, Long tenantId) {
         Sale sale = new Sale();
         sale.setShift(shift);
         sale.setStore(store);
@@ -86,20 +88,20 @@ class SaleRepositoryIT {
 
     @Test
     void findOpenByShiftIdAndTenantId_returnsOnlyOpenSales() {
-        saveSale("OPEN",      new BigDecimal("200.00"));
-        saveSale("OPEN",      new BigDecimal("150.00"));
-        saveSale("CONFIRMED", new BigDecimal("100.00"));
+        saveSale(SaleStatus.OPEN,      new BigDecimal("200.00"));
+        saveSale(SaleStatus.OPEN,      new BigDecimal("150.00"));
+        saveSale(SaleStatus.CONFIRMED, new BigDecimal("100.00"));
 
         List<Sale> result = saleRepository.findOpenByShiftIdAndTenantId(shift.getId(), TENANT_ID);
 
         assertThat(result).hasSize(2);
-        assertThat(result).allMatch(s -> "OPEN".equals(s.getStatus()));
+        assertThat(result).allMatch(s -> SaleStatus.OPEN == s.getStatus());
     }
 
     @Test
     void findOpenByShiftIdAndTenantId_excludesOtherTenants() {
-        saveSale("OPEN", new BigDecimal("200.00"), TENANT_ID);
-        saveSale("OPEN", new BigDecimal("150.00"), OTHER_TENANT_ID);
+        saveSale(SaleStatus.OPEN, new BigDecimal("200.00"), TENANT_ID);
+        saveSale(SaleStatus.OPEN, new BigDecimal("150.00"), OTHER_TENANT_ID);
 
         List<Sale> result = saleRepository.findOpenByShiftIdAndTenantId(shift.getId(), TENANT_ID);
 
@@ -108,7 +110,7 @@ class SaleRepositoryIT {
 
     @Test
     void findOpenByShiftIdAndTenantId_returnsEmptyWhenAllSalesConfirmed() {
-        saveSale("CONFIRMED", new BigDecimal("200.00"));
+        saveSale(SaleStatus.CONFIRMED, new BigDecimal("200.00"));
 
         List<Sale> result = saleRepository.findOpenByShiftIdAndTenantId(shift.getId(), TENANT_ID);
 
@@ -119,9 +121,9 @@ class SaleRepositoryIT {
 
     @Test
     void countOpenByShiftIdAndTenantId_returnsCorrectCount() {
-        saveSale("OPEN",      new BigDecimal("200.00"));
-        saveSale("OPEN",      new BigDecimal("150.00"));
-        saveSale("CONFIRMED", new BigDecimal("100.00"));
+        saveSale(SaleStatus.OPEN,      new BigDecimal("200.00"));
+        saveSale(SaleStatus.OPEN,      new BigDecimal("150.00"));
+        saveSale(SaleStatus.CONFIRMED, new BigDecimal("100.00"));
 
         long count = saleRepository.countOpenByShiftIdAndTenantId(shift.getId(), TENANT_ID);
 
@@ -132,9 +134,9 @@ class SaleRepositoryIT {
 
     @Test
     void findByShiftIdAndTenantIdOrderByCreatedAtDesc_returnsAllSalesOfTenant() {
-        saveSale("OPEN",      new BigDecimal("200.00"), TENANT_ID);
-        saveSale("CONFIRMED", new BigDecimal("150.00"), TENANT_ID);
-        saveSale("OPEN",      new BigDecimal("100.00"), OTHER_TENANT_ID);
+        saveSale(SaleStatus.OPEN,      new BigDecimal("200.00"), TENANT_ID);
+        saveSale(SaleStatus.CONFIRMED, new BigDecimal("150.00"), TENANT_ID);
+        saveSale(SaleStatus.OPEN,      new BigDecimal("100.00"), OTHER_TENANT_ID);
 
         List<Sale> result = saleRepository.findByShiftIdAndTenantIdOrderByCreatedAtDesc(
                 shift.getId(), TENANT_ID);
@@ -146,9 +148,9 @@ class SaleRepositoryIT {
 
     @Test
     void findByShiftIdAndStatusAndTenantId_filtersCorrectly() {
-        saveSale("OPEN",      new BigDecimal("200.00"));
-        saveSale("OPEN",      new BigDecimal("150.00"));
-        saveSale("CONFIRMED", new BigDecimal("100.00"));
+        saveSale(SaleStatus.OPEN,      new BigDecimal("200.00"));
+        saveSale(SaleStatus.OPEN,      new BigDecimal("150.00"));
+        saveSale(SaleStatus.CONFIRMED, new BigDecimal("100.00"));
 
         List<Sale> open = saleRepository.findByShiftIdAndStatusAndTenantId(
                 shift.getId(), "OPEN", TENANT_ID);

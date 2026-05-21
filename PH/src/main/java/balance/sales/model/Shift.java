@@ -1,9 +1,9 @@
 package balance.sales.model;
 
+import balance.common.enums.ShiftStatus;
 import balance.model.Store;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
@@ -26,8 +26,9 @@ public class Shift {
     @Column(nullable = false)
     private String username;
 
-    @Column(nullable = false)
-    private String status = "OPEN"; // OPEN | CLOSED
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private ShiftStatus status = ShiftStatus.OPEN;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "store_id", nullable = false)
@@ -47,8 +48,8 @@ public class Shift {
     public String getUsername() { return username; }
     public void setUsername(String username) { this.username = username; }
 
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
+    public ShiftStatus getStatus() { return status; }
+    public void setStatus(ShiftStatus status) { this.status = status; }
 
     public Store getStore() { return store; }
     public void setStore(Store store) { this.store = store; }
