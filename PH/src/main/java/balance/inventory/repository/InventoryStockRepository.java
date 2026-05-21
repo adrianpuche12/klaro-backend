@@ -12,16 +12,23 @@ import java.util.Optional;
 @Repository
 public interface InventoryStockRepository extends JpaRepository<InventoryStock, Long> {
 
-    List<InventoryStock> findByStoreIdOrderByProductNameAsc(Long storeId);
+    @Query("SELECT s FROM InventoryStock s JOIN FETCH s.product p JOIN FETCH s.product.store JOIN FETCH s.store " +
+           "LEFT JOIN FETCH p.category cat LEFT JOIN FETCH cat.parent " +
+           "WHERE s.store.id = :storeId AND s.tenantId = :tenantId ORDER BY p.name ASC")
+    List<InventoryStock> findByStoreIdAndTenantIdOrderByProductNameAsc(
+            @Param("storeId") Long storeId, @Param("tenantId") Long tenantId);
 
-    Optional<InventoryStock> findByProductIdAndStoreId(Long productId, Long storeId);
+    Optional<InventoryStock> findByProductIdAndStoreIdAndTenantId(Long productId, Long storeId, Long tenantId);
 
-    // minStock > 0 evita falsos positivos cuando el producto no tiene mínimo definido
-    @Query("SELECT s FROM InventoryStock s WHERE s.store.id = :storeId AND s.product.minStock > 0 AND s.quantity <= s.product.minStock")
-    List<InventoryStock> findLowStockByStoreId(@Param("storeId") Long storeId);
+    @Query("SELECT s FROM InventoryStock s WHERE s.store.id = :storeId AND s.tenantId = :tenantId " +
+           "AND s.product.minStock > 0 AND s.quantity <= s.product.minStock")
+    List<InventoryStock> findLowStockByStoreIdAndTenantId(
+            @Param("storeId") Long storeId, @Param("tenantId") Long tenantId);
 
-    @Query("SELECT COUNT(s) FROM InventoryStock s WHERE s.store.id = :storeId AND s.product.minStock > 0 AND s.quantity <= s.product.minStock")
-    long countLowStockByStoreId(@Param("storeId") Long storeId);
+    @Query("SELECT COUNT(s) FROM InventoryStock s WHERE s.store.id = :storeId AND s.tenantId = :tenantId " +
+           "AND s.product.minStock > 0 AND s.quantity <= s.product.minStock")
+    long countLowStockByStoreIdAndTenantId(
+            @Param("storeId") Long storeId, @Param("tenantId") Long tenantId);
 
     void deleteByProductId(Long productId);
 }

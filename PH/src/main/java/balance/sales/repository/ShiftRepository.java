@@ -9,8 +9,15 @@ import java.util.List;
 import java.util.Optional;
 
 public interface ShiftRepository extends JpaRepository<Shift, Long> {
-    Optional<Shift> findByStoreIdAndStatus(Long storeId, String status);
-    List<Shift> findByStoreIdOrderByOpenedAtDesc(Long storeId);
-    Page<Shift> findByStoreIdOrderByOpenedAtDesc(Long storeId, Pageable pageable);
-    boolean existsByStoreIdAndStatus(Long storeId, String status);
+
+    Optional<Shift> findByStoreIdAndStatusAndTenantId(Long storeId, String status, Long tenantId);
+
+    List<Shift> findByStoreIdAndTenantIdOrderByOpenedAtDesc(Long storeId, Long tenantId);
+
+    Page<Shift> findByStoreIdAndTenantIdOrderByOpenedAtDesc(Long storeId, Long tenantId, Pageable pageable);
+
+    boolean existsByStoreIdAndStatusAndTenantId(Long storeId, String status, Long tenantId);
+
+    /** Busca un shift por id validando que pertenezca al tenant. */
+    Optional<Shift> findByIdAndTenantId(Long id, Long tenantId);
 }

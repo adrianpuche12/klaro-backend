@@ -1,39 +1,53 @@
 package balance.service;
+
+import balance.model.Transaction;
+import balance.repository.StoreRepository;
 import balance.repository.TransactionRepository;
+import balance.tenant.context.TenantSecurityUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
-import balance.model.Transaction;
 
 @Service
 public class TransactionService {
 
-    @Autowired
-    private TransactionRepository transactionRepository;
+    @Autowired private TransactionRepository transactionRepository;
+    @Autowired private StoreRepository storeRepository;
 
     public List<Transaction> findAll() {
-        return transactionRepository.findAllOrderByDateDesc();
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        return transactionRepository.findByTenantIdOrderByDateDesc(tenantId);
     }
 
     public Optional<Transaction> findById(Long id) {
-        return transactionRepository.findById(id);
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        return transactionRepository.findByIdAndTenantId(id, tenantId);
     }
 
     public Transaction save(Transaction transaction) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        transaction.setTenantId(tenantId);
         return transactionRepository.save(transaction);
     }
 
     public void deleteById(Long id) {
-        transactionRepository.deleteById(id);
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        transactionRepository.findByIdAndTenantId(id, tenantId)
+                .ifPresent(t -> transactionRepository.deleteById(id));
     }
 
     public List<Transaction> findByStoreId(Long storeId) {
-        return transactionRepository.findByStoreId(storeId);
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
+        return transactionRepository.findByStoreIdAndTenantIdOrderByDateDesc(storeId, tenantId);
     }
 
     public List<Transaction> findByDateBetweenAndStoreId(LocalDate startDate, LocalDate endDate, Long storeId) {
-        return transactionRepository.findByDateBetweenAndStoreIdOrderByDateDesc(startDate, endDate, storeId);
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
+        return transactionRepository.findByStoreIdAndTenantIdAndDateRange(storeId, tenantId, startDate, endDate);
     }
 }

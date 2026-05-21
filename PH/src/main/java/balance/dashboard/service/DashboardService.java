@@ -10,6 +10,7 @@ import balance.sales.model.Sale;
 import balance.sales.model.Shift;
 import balance.sales.repository.SaleRepository;
 import balance.sales.repository.ShiftRepository;
+import balance.tenant.context.TenantSecurityUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -30,42 +31,38 @@ public class DashboardService {
     @Autowired private InventoryStockRepository stockRepository;
     @Autowired private ProductRepository        productRepository;
 
-    /**
-     * Retorna el resumen global del sistema para el admin.
-     * Usa zona horaria Honduras (UTC-6) para el cálculo de "hoy".
-     */
     public DashboardDTO getDashboard() {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
         LocalDate today = LocalDate.now(HONDURAS_TZ);
 
-        List<Store> activeStores = storeRepository.findAll().stream()
-                .filter(s -> Boolean.TRUE.equals(s.getActive()))
-                .toList();
+        List<Store> activeStores = storeRepository.findByTenantIdAndActive(tenantId, true);
 
         List<StoreDashboardDTO> storeDTOs = activeStores.stream()
-                .map(this::buildStoreDTO)
+                .map(store -> buildStoreDTO(store, tenantId, today))
                 .toList();
 
-        // Totales reales del día: todas las ventas de hoy (turno abierto O cerrado)
-        // Nota: findByStoreIdAndSaleDateOrderByCreatedAtDesc evita el problema de inferencia
-        // de tipos NULL en PostgreSQL que tiene findByStoreIdAndDateRange con parámetros opcionales
         long totalSalesToday = activeStores.stream()
-                .mapToLong(s -> saleRepository.findByStoreIdAndSaleDateOrderByCreatedAtDesc(s.getId(), today).size())
+                .mapToLong(s -> saleRepository
+                        .findByStoreIdAndTenantIdAndDateRange(s.getId(), tenantId, today, today).size())
                 .sum();
+
         BigDecimal totalAmountToday = activeStores.stream()
-                .flatMap(s -> saleRepository.findByStoreIdAndSaleDateOrderByCreatedAtDesc(s.getId(), today).stream())
+                .flatMap(s -> saleRepository
+                        .findByStoreIdAndTenantIdAndDateRange(s.getId(), tenantId, today, today).stream())
                 .map(Sale::getTotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         return new DashboardDTO(storeDTOs, totalSalesToday, totalAmountToday);
     }
 
-    private StoreDashboardDTO buildStoreDTO(Store store) {
+    private StoreDashboardDTO buildStoreDTO(Store store, Long tenantId, LocalDate today) {
         StoreDashboardDTO dto = new StoreDashboardDTO();
         dto.setStoreId(store.getId());
         dto.setStoreName(store.getName());
 
-        // Turno activo
-        Optional<Shift> activeShift = shiftRepository.findByStoreIdAndStatus(store.getId(), "OPEN");
+        Optional<Shift> activeShift = shiftRepository
+                .findByStoreIdAndStatusAndTenantId(store.getId(), "OPEN", tenantId);
+
         if (activeShift.isPresent()) {
             Shift shift = activeShift.get();
             dto.setHasActiveShift(true);
@@ -73,22 +70,21 @@ public class DashboardService {
             dto.setShiftUsername(shift.getUsername());
             dto.setShiftOpenedAt(shift.getOpenedAt());
 
-            // Ventas del turno activo
-            List<Sale> sales = saleRepository.findOpenByShiftId(shift.getId());
+            List<Sale> sales = saleRepository
+                    .findOpenByShiftIdAndTenantId(shift.getId(), tenantId);
             dto.setShiftSalesCount(sales.size());
             BigDecimal total = sales.stream()
-                    .map(Sale::getTotal)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    .map(Sale::getTotal).reduce(BigDecimal.ZERO, BigDecimal::add);
             dto.setShiftSalesTotal(total);
         } else {
             dto.setHasActiveShift(false);
             dto.setShiftSalesTotal(BigDecimal.ZERO);
         }
 
-        // Inventario
-        long lowStock = stockRepository.countLowStockByStoreId(store.getId());
+        long lowStock  = stockRepository.countLowStockByStoreIdAndTenantId(store.getId(), tenantId);
         long totalProd = productRepository.findByStoreIdOrderByNameAsc(store.getId()).size();
-        BigDecimal estimatedValue = stockRepository.findByStoreIdOrderByProductNameAsc(store.getId())
+        BigDecimal estimatedValue = stockRepository
+                .findByStoreIdAndTenantIdOrderByProductNameAsc(store.getId(), tenantId)
                 .stream()
                 .map(s -> s.getProduct().getPrice().multiply(BigDecimal.valueOf(s.getQuantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);

@@ -2,6 +2,7 @@ package balance.users.service;
 
 import balance.model.Store;
 import balance.repository.StoreRepository;
+import balance.tenant.context.TenantSecurityUtils;
 import balance.users.dto.AppUserRequestDTO;
 import balance.users.dto.AppUserResponseDTO;
 import balance.users.model.AppUser;
@@ -15,56 +16,47 @@ import java.util.List;
 @Service
 public class AppUserService {
 
-    @Autowired private AppUserRepository     userRepository;
-    @Autowired private StoreRepository       storeRepository;
-    @Autowired private KeycloakAdminService  keycloakAdmin;
-
-    // ── Listar usuarios ───────────────────────────────────────────────────────
+    @Autowired private AppUserRepository    userRepository;
+    @Autowired private StoreRepository      storeRepository;
+    @Autowired private KeycloakAdminService keycloakAdmin;
 
     public List<AppUserResponseDTO> findAll() {
-        return userRepository.findAllByOrderByFullNameAsc()
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        return userRepository.findByTenantIdOrderByFullNameAsc(tenantId)
                 .stream().map(AppUserResponseDTO::from).toList();
     }
 
     public List<AppUserResponseDTO> findByStore(Long storeId) {
-        return userRepository.findByStoreIdOrderByFullNameAsc(storeId)
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
+        return userRepository.findByStoreIdAndTenantIdOrderByFullNameAsc(storeId, tenantId)
                 .stream().map(AppUserResponseDTO::from).toList();
     }
 
-    // ── Crear usuario ─────────────────────────────────────────────────────────
-
-    /**
-     * Crea el usuario en nuestra BD y en Keycloak con rol 'user'.
-     * Si falla Keycloak, la transacción se revierte.
-     */
     @Transactional
     public AppUserResponseDTO create(AppUserRequestDTO dto) {
-        if (userRepository.existsByUsername(dto.getUsername().trim().toLowerCase())) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+
+        if (userRepository.existsByUsernameAndTenantId(dto.getUsername().trim().toLowerCase(), tenantId)) {
             throw new IllegalArgumentException("El username '" + dto.getUsername() + "' ya está en uso");
         }
 
-        Store store = storeRepository.findById(dto.getStoreId())
-                .orElseThrow(() -> new IllegalArgumentException("Local no encontrado"));
+        Store store = TenantSecurityUtils.requireStore(dto.getStoreId(), tenantId, storeRepository);
 
-        // 1. Crear en Keycloak y obtener el keycloakId
         String keycloakId = keycloakAdmin.createUser(
-            dto.getUsername(), dto.getFullName(), dto.getPassword()
-        );
+                dto.getUsername(), dto.getFullName(), dto.getPassword());
 
-        // 2. Guardar en nuestra BD
         AppUser user = new AppUser();
         user.setKeycloakId(keycloakId);
         user.setFullName(dto.getFullName().trim());
         user.setUsername(dto.getUsername().trim().toLowerCase());
         user.setStore(store);
         user.setStatus("ACTIVE");
+        user.setTenantId(tenantId);
 
         return AppUserResponseDTO.from(userRepository.save(user));
     }
 
-    // ── Suspender / Activar ───────────────────────────────────────────────────
-
-    /** Suspende el usuario — no puede iniciar sesión hasta que se reactive. */
     @Transactional
     public AppUserResponseDTO suspend(Long id) {
         AppUser user = findOrThrow(id);
@@ -76,7 +68,6 @@ public class AppUserService {
         return AppUserResponseDTO.from(userRepository.save(user));
     }
 
-    /** Reactiva el acceso del usuario. */
     @Transactional
     public AppUserResponseDTO activate(Long id) {
         AppUser user = findOrThrow(id);
@@ -88,30 +79,21 @@ public class AppUserService {
         return AppUserResponseDTO.from(userRepository.save(user));
     }
 
-    // ── Reasignar local ───────────────────────────────────────────────────────
-
-    /** Cambia el local al que está asignado el usuario. */
     @Transactional
     public AppUserResponseDTO reassign(Long id, Long newStoreId) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
         AppUser user = findOrThrow(id);
-        Store store = storeRepository.findById(newStoreId)
-                .orElseThrow(() -> new IllegalArgumentException("Local no encontrado"));
+        Store store = TenantSecurityUtils.requireStore(newStoreId, tenantId, storeRepository);
         user.setStore(store);
         return AppUserResponseDTO.from(userRepository.save(user));
     }
 
-    // ── Resetear contraseña ───────────────────────────────────────────────────
-
-    /** El admin resetea la contraseña de un usuario. */
     @Transactional
     public void resetPassword(Long id, String newPassword) {
         AppUser user = findOrThrow(id);
         keycloakAdmin.resetPassword(user.getKeycloakId(), newPassword);
     }
 
-    // ── Eliminar usuario ──────────────────────────────────────────────────────
-
-    /** Elimina el usuario de nuestra BD y de Keycloak permanentemente. */
     @Transactional
     public void delete(Long id) {
         AppUser user = findOrThrow(id);
@@ -119,19 +101,16 @@ public class AppUserService {
         userRepository.delete(user);
     }
 
-    // ── Buscar por username ────────────────────────────────────────────────────
-
-    /** Retorna el perfil del empleado según su username (igual al de Keycloak). */
     public AppUserResponseDTO findByUsername(String username) {
-        return userRepository.findByUsername(username.toLowerCase())
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        return userRepository.findByUsernameAndTenantId(username.toLowerCase(), tenantId)
                 .map(AppUserResponseDTO::from)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado: " + username));
     }
 
-    // ── Helper ────────────────────────────────────────────────────────────────
-
     private AppUser findOrThrow(Long id) {
-        return userRepository.findById(id)
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        return userRepository.findByIdAndTenantId(id, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
     }
 }
