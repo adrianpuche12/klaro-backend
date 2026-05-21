@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -36,11 +37,13 @@ public class StoreV2Controller {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @PreAuthorize("hasRole('root')")
     @PostMapping
     public ResponseEntity<StoreResponseDTO> create(@Valid @RequestBody StoreRequestDTO dto) {
         return ResponseEntity.status(HttpStatus.CREATED).body(storeV2Service.create(dto));
     }
 
+    @PreAuthorize("hasRole('root')")
     @PutMapping("/{id}")
     public ResponseEntity<StoreResponseDTO> update(@PathVariable Long id,
                                                     @Valid @RequestBody StoreRequestDTO dto) {
@@ -49,6 +52,7 @@ public class StoreV2Controller {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @PreAuthorize("hasRole('root')")
     @PutMapping("/{id}/toggle")
     public ResponseEntity<StoreResponseDTO> toggle(@PathVariable Long id) {
         return storeV2Service.toggle(id)
@@ -56,6 +60,7 @@ public class StoreV2Controller {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @PreAuthorize("hasRole('root')")
     @DeleteMapping("/{id}")
     public ResponseEntity<?> delete(@PathVariable Long id) {
         try {

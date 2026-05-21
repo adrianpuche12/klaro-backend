@@ -6,6 +6,7 @@ import balance.users.service.AppUserService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,13 +20,14 @@ public class AppUserController {
     @Autowired
     private AppUserService userService;
 
-    /** Lista todos los usuarios del sistema. */
+    /** Lista todos los usuarios del tenant. Solo admin y root. */
+    @PreAuthorize("hasAnyRole('root', 'admin')")
     @GetMapping
     public ResponseEntity<List<AppUserResponseDTO>> findAll() {
         return ResponseEntity.ok(userService.findAll());
     }
 
-    /** Retorna el perfil de un empleado por su username (usado al iniciar sesiÃ³n â€” accesible para todos los roles). */
+    /** Perfil de un usuario por username. Accesible para todos los roles autenticados. */
     @GetMapping("/by-username/{username}")
     public ResponseEntity<?> findByUsername(@PathVariable String username) {
         try {
@@ -35,13 +37,15 @@ public class AppUserController {
         }
     }
 
-    /** Lista usuarios por local. */
+    /** Lista usuarios por local. Solo admin y root. */
+    @PreAuthorize("hasAnyRole('root', 'admin')")
     @GetMapping("/store/{storeId}")
     public ResponseEntity<List<AppUserResponseDTO>> findByStore(@PathVariable Long storeId) {
         return ResponseEntity.ok(userService.findByStore(storeId));
     }
 
-    /** Crea un usuario nuevo (crea en Keycloak + guarda en BD). */
+    /** Crea un usuario. Admin puede crear solo USER; root puede crear ADMIN y USER. */
+    @PreAuthorize("hasAnyRole('root', 'admin')")
     @PostMapping
     public ResponseEntity<?> create(@Valid @RequestBody AppUserRequestDTO dto) {
         try {
@@ -53,7 +57,8 @@ public class AppUserController {
         }
     }
 
-    /** Suspende el acceso del usuario (no puede iniciar sesiÃ³n). */
+    /** Suspende el acceso del usuario. Solo admin y root. */
+    @PreAuthorize("hasAnyRole('root', 'admin')")
     @PutMapping("/{id}/suspend")
     public ResponseEntity<?> suspend(@PathVariable Long id) {
         try {
@@ -63,7 +68,8 @@ public class AppUserController {
         }
     }
 
-    /** Reactiva el acceso del usuario. */
+    /** Reactiva el acceso del usuario. Solo admin y root. */
+    @PreAuthorize("hasAnyRole('root', 'admin')")
     @PutMapping("/{id}/activate")
     public ResponseEntity<?> activate(@PathVariable Long id) {
         try {
@@ -73,7 +79,8 @@ public class AppUserController {
         }
     }
 
-    /** Reasigna el usuario a otro local. */
+    /** Reasigna el usuario a otro local. Solo admin y root. */
+    @PreAuthorize("hasAnyRole('root', 'admin')")
     @PutMapping("/{id}/reassign")
     public ResponseEntity<?> reassign(@PathVariable Long id, @RequestBody Map<String, Long> body) {
         try {
@@ -85,22 +92,24 @@ public class AppUserController {
         }
     }
 
-    /** Resetea la contraseÃ±a del usuario. */
+    /** Resetea la contraseña del usuario. Solo admin y root. */
+    @PreAuthorize("hasAnyRole('root', 'admin')")
     @PutMapping("/{id}/reset-password")
     public ResponseEntity<?> resetPassword(@PathVariable Long id, @RequestBody Map<String, String> body) {
         try {
             String newPassword = body.get("password");
             if (newPassword == null || newPassword.isBlank()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "La nueva contraseÃ±a es obligatoria"));
+                return ResponseEntity.badRequest().body(Map.of("error", "La nueva contrasena es obligatoria"));
             }
             userService.resetPassword(id, newPassword);
-            return ResponseEntity.ok(Map.of("message", "ContraseÃ±a actualizada correctamente"));
+            return ResponseEntity.ok(Map.of("message", "Contrasena actualizada correctamente"));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
-    /** Elimina el usuario permanentemente de Keycloak y de la BD. */
+    /** Elimina el usuario permanentemente. Solo root. */
+    @PreAuthorize("hasRole('root')")
     @DeleteMapping("/{id}")
     public ResponseEntity<?> delete(@PathVariable Long id) {
         try {
@@ -111,4 +120,3 @@ public class AppUserController {
         }
     }
 }
-

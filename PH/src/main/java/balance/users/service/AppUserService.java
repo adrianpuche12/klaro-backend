@@ -8,8 +8,12 @@ import balance.users.dto.AppUserResponseDTO;
 import balance.users.model.AppUser;
 import balance.users.repository.AppUserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Set;
 
 import java.util.List;
 
@@ -37,14 +41,28 @@ public class AppUserService {
     public AppUserResponseDTO create(AppUserRequestDTO dto) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
 
+        String role = (dto.getRole() != null) ? dto.getRole().toLowerCase() : "user";
+        if (!Set.of("root", "admin", "user").contains(role)) {
+            throw new IllegalArgumentException("Rol invalido: " + role);
+        }
+
+        // ADMIN solo puede crear usuarios con rol 'user'
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        boolean callerIsRoot = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_root"));
+        if (!callerIsRoot && !"user".equals(role)) {
+            throw new IllegalArgumentException("Solo root puede crear usuarios con rol '" + role + "'");
+        }
+
         if (userRepository.existsByUsernameAndTenantId(dto.getUsername().trim().toLowerCase(), tenantId)) {
-            throw new IllegalArgumentException("El username '" + dto.getUsername() + "' ya está en uso");
+            throw new IllegalArgumentException("El username '" + dto.getUsername() + "' ya esta en uso");
         }
 
         Store store = TenantSecurityUtils.requireStore(dto.getStoreId(), tenantId, storeRepository);
 
+        // Crea en Keycloak con rol correcto y atributo tenant_id para que el JWT lo incluya
         String keycloakId = keycloakAdmin.createUser(
-                dto.getUsername(), dto.getFullName(), dto.getPassword());
+                dto.getUsername(), dto.getFullName(), dto.getPassword(), role, tenantId);
 
         AppUser user = new AppUser();
         user.setKeycloakId(keycloakId);

@@ -68,28 +68,25 @@ public class KeycloakAdminService {
     // ── Crear usuario ─────────────────────────────────────────────────────────
 
     /**
-     * Crea un usuario en Keycloak con el rol 'user' asignado.
+     * Crea un usuario en Keycloak con el rol especificado y el atributo tenant_id.
+     * El atributo tenant_id es necesario para que el Protocol Mapper lo incluya en el JWT.
      * @return ID del usuario creado en Keycloak (UUID)
      */
-    public String createUser(String username, String fullName, String password) {
+    public String createUser(String username, String fullName, String password, String role, Long tenantId) {
         String token = getAdminToken();
         String usersUrl = keycloakUrl + "/admin/realms/" + realm + "/users";
 
-        // Separar nombre completo en firstName y lastName
         String[] parts = fullName.trim().split("\\s+", 2);
         String firstName = parts[0];
         String lastName  = parts.length > 1 ? parts[1] : "";
 
         Map<String, Object> userPayload = Map.of(
-            "username",   username.trim().toLowerCase(),
-            "firstName",  firstName,
-            "lastName",   lastName,
-            "enabled",    true,
-            "credentials", List.of(Map.of(
-                "type",      "password",
-                "value",     password,
-                "temporary", false
-            ))
+            "username",    username.trim().toLowerCase(),
+            "firstName",   firstName,
+            "lastName",    lastName,
+            "enabled",     true,
+            "credentials", List.of(Map.of("type", "password", "value", password, "temporary", false)),
+            "attributes",  Map.of("tenant_id", List.of(tenantId.toString()))
         );
 
         HttpHeaders headers = new HttpHeaders();
@@ -101,13 +98,11 @@ public class KeycloakAdminService {
         try {
             ResponseEntity<Void> response = restTemplate.postForEntity(usersUrl, request, Void.class);
 
-            // El ID del usuario se extrae del header Location: .../users/{keycloakId}
             String location = response.getHeaders().getFirst("Location");
-            if (location == null) throw new RuntimeException("Keycloak no retornó el ID del usuario");
+            if (location == null) throw new RuntimeException("Keycloak no retorno el ID del usuario");
             String keycloakId = location.substring(location.lastIndexOf("/") + 1);
 
-            // Asignar rol 'user' al nuevo usuario
-            assignRealmRole(token, keycloakId, "user");
+            assignRealmRole(token, keycloakId, role);
 
             return keycloakId;
 

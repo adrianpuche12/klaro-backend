@@ -114,12 +114,13 @@ public class OperationsV3Service {
 
     private List<OperationDTO> getSales(Long tenantId, LocalDate from, LocalDate to, Long storeId) {
         List<Sale> list;
+        // Usar la query strict (sin IS NULL) porque OperationsV3 siempre recibe fechas no-nulas.
+        // La variante nullable falla en Hibernate 6 con parámetros LocalDate no-nulos.
         if (storeId != null) {
-            list = saleRepository.findByStoreIdAndTenantIdAndDateRange(storeId, tenantId, from, to);
+            list = saleRepository.findByStoreIdAndTenantIdAndDateRangeStrict(storeId, tenantId, from, to);
         } else {
-            // Sin filtro de store: buscar todas las stores del tenant y combinar
             list = storeRepository.findByTenantId(tenantId).stream()
-                    .flatMap(s -> saleRepository.findByStoreIdAndTenantIdAndDateRange(s.getId(), tenantId, from, to).stream())
+                    .flatMap(s -> saleRepository.findByStoreIdAndTenantIdAndDateRangeStrict(s.getId(), tenantId, from, to).stream())
                     .toList();
         }
 
