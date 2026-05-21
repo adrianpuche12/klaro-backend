@@ -12,6 +12,8 @@ public class MovementDTO {
     private String reason;
     private String notes;
     private String username;
+    private String performedBy;
+    private String source;
     private Long productId;
     private String productName;
     private Long storeId;
@@ -25,6 +27,8 @@ public class MovementDTO {
         dto.reason      = m.getReason();
         dto.notes       = m.getNotes();
         dto.username    = m.getUsername();
+        dto.performedBy = m.getPerformedBy();
+        dto.source      = m.getSource();
         dto.createdAt   = m.getCreatedAt();
         if (m.getProduct() != null) {
             dto.productId   = m.getProduct().getId();
@@ -40,6 +44,8 @@ public class MovementDTO {
     public String getReason() { return reason; }
     public String getNotes() { return notes; }
     public String getUsername() { return username; }
+    public String getPerformedBy() { return performedBy; }
+    public String getSource() { return source; }
     public Long getProductId() { return productId; }
     public String getProductName() { return productName; }
     public Long getStoreId() { return storeId; }
