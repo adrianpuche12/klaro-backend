@@ -21,6 +21,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(ShiftController.class)
+@org.springframework.context.annotation.Import(balance.config.TestSecurityConfig.class)
 class ShiftControllerTest {
 
     @Autowired private MockMvc mockMvc;
