@@ -99,10 +99,10 @@ public class AppUserController {
         try {
             String newPassword = body.get("password");
             if (newPassword == null || newPassword.isBlank()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "La nueva contrasena es obligatoria"));
+                return ResponseEntity.badRequest().body(Map.of("error", "La nueva contraseña es obligatoria"));
             }
             userService.resetPassword(id, newPassword);
-            return ResponseEntity.ok(Map.of("message", "Contrasena actualizada correctamente"));
+            return ResponseEntity.ok(Map.of("message", "Contraseña actualizada correctamente"));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }

@@ -244,7 +244,7 @@ class AppUserControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("password", "nuevaPass123"))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("ContraseÃ±a actualizada correctamente"));
+                .andExpect(jsonPath("$.message").value("Contraseña actualizada correctamente"));
     }
 
     @Test
@@ -253,7 +253,7 @@ class AppUserControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("password", ""))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("La nueva contraseÃ±a es obligatoria"));
+                .andExpect(jsonPath("$.error").value("La nueva contraseña es obligatoria"));
 
         verifyNoInteractions(userService);
     }

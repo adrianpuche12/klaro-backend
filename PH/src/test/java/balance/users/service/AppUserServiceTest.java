@@ -15,7 +15,11 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
@@ -34,13 +38,20 @@ class AppUserServiceTest {
     @Mock private KeycloakAdminService keycloakAdmin;
 
     @BeforeEach
-    void setTenantContext() {
+    void setUp() {
         TenantContext.setTenantId(TENANT_ID);
+        // Simular llamada desde usuario con rol root (cumple con el guard de create())
+        var auth = new TestingAuthenticationToken(
+                "admin.klaro", null,
+                List.of(new SimpleGrantedAuthority("ROLE_root")));
+        auth.setAuthenticated(true);
+        SecurityContextHolder.getContext().setAuthentication(auth);
     }
 
     @AfterEach
-    void clearTenantContext() {
+    void tearDown() {
         TenantContext.clear();
+        SecurityContextHolder.clearContext();
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -70,6 +81,7 @@ class AppUserServiceTest {
         dto.setFullName(fullName);
         dto.setPassword("pass123");
         dto.setStoreId(storeId);
+        // role defaults to "user"
         return dto;
     }
 
@@ -79,7 +91,7 @@ class AppUserServiceTest {
     void create_normalizesUsernameToLowercase() {
         when(userRepository.existsByUsernameAndTenantId("cajero01", TENANT_ID)).thenReturn(false);
         when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
-        when(keycloakAdmin.createUser(any(), any(), any())).thenReturn("kc-uuid-nuevo");
+        when(keycloakAdmin.createUser(any(), any(), any(), any(), any())).thenReturn("kc-uuid-nuevo");
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         appUserService.create(buildRequest("CAJERO01", "Cajero Uno", 1L));
@@ -93,7 +105,7 @@ class AppUserServiceTest {
     void create_trimesUsernameWhitespace() {
         when(userRepository.existsByUsernameAndTenantId("cajero01", TENANT_ID)).thenReturn(false);
         when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
-        when(keycloakAdmin.createUser(any(), any(), any())).thenReturn("kc-uuid-nuevo");
+        when(keycloakAdmin.createUser(any(), any(), any(), any(), any())).thenReturn("kc-uuid-nuevo");
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         appUserService.create(buildRequest("  cajero01  ", "Cajero Uno", 1L));
@@ -107,7 +119,7 @@ class AppUserServiceTest {
     void create_savesKeycloakIdReturnedByKeycloak() {
         when(userRepository.existsByUsernameAndTenantId("cajero01", TENANT_ID)).thenReturn(false);
         when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
-        when(keycloakAdmin.createUser(any(), any(), any())).thenReturn("kc-uuid-abc123");
+        when(keycloakAdmin.createUser(any(), any(), any(), any(), any())).thenReturn("kc-uuid-abc123");
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         appUserService.create(buildRequest("cajero01", "Cajero", 1L));
@@ -121,7 +133,7 @@ class AppUserServiceTest {
     void create_setsStatusToActiveByDefault() {
         when(userRepository.existsByUsernameAndTenantId("cajero01", TENANT_ID)).thenReturn(false);
         when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
-        when(keycloakAdmin.createUser(any(), any(), any())).thenReturn("kc-uuid-nuevo");
+        when(keycloakAdmin.createUser(any(), any(), any(), any(), any())).thenReturn("kc-uuid-nuevo");
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         appUserService.create(buildRequest("cajero01", "Cajero", 1L));
@@ -129,6 +141,40 @@ class AppUserServiceTest {
         ArgumentCaptor<AppUser> captor = ArgumentCaptor.forClass(AppUser.class);
         verify(userRepository).save(captor.capture());
         assertThat(captor.getValue().getStatus()).isEqualTo("ACTIVE");
+    }
+
+    // ── create — restricción de roles ─────────────────────────────────────────
+
+    @Test
+    void create_adminCannotCreateAdminRole() {
+        // Simular caller como ADMIN (no root)
+        var adminAuth = new TestingAuthenticationToken(
+                "admin.user", null,
+                List.of(new SimpleGrantedAuthority("ROLE_admin")));
+        adminAuth.setAuthenticated(true);
+        SecurityContextHolder.getContext().setAuthentication(adminAuth);
+
+        AppUserRequestDTO dto = buildRequest("otro.admin", "Otro Admin", 1L);
+        dto.setRole("admin");
+
+        assertThatThrownBy(() -> appUserService.create(dto))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Solo root puede crear");
+    }
+
+    @Test
+    void create_rootCanCreateAdminRole() {
+        when(userRepository.existsByUsernameAndTenantId("nuevo.admin", TENANT_ID)).thenReturn(false);
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
+        when(keycloakAdmin.createUser(any(), any(), any(), eq("admin"), eq(TENANT_ID))).thenReturn("kc-uuid-admin");
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        AppUserRequestDTO dto = buildRequest("nuevo.admin", "Admin Nuevo", 1L);
+        dto.setRole("admin");
+
+        appUserService.create(dto);
+
+        verify(keycloakAdmin).createUser(any(), any(), any(), eq("admin"), eq(TENANT_ID));
     }
 
     // ── create — validaciones ─────────────────────────────────────────────────
@@ -139,7 +185,7 @@ class AppUserServiceTest {
 
         assertThatThrownBy(() -> appUserService.create(buildRequest("cajero01", "Cajero", 1L)))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("ya está en uso");
+                .hasMessageContaining("ya esta en uso");
 
         verifyNoInteractions(keycloakAdmin);
     }
