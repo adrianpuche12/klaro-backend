@@ -75,15 +75,16 @@ class OperationsV3ServiceTest {
         return s;
     }
 
+    /** Stubs vacíos para todos los repositorios en el path "sin storeId". */
     private void stubEmptyRepos() {
         lenient().when(closingDepositRepository.findByTenantIdAndDateRange(any(), any(), any())).thenReturn(List.of());
         lenient().when(supplierPaymentRepository.findByTenantIdAndDateRange(any(), any(), any())).thenReturn(List.of());
         lenient().when(salaryPaymentRepository.findByTenantIdAndDateRange(any(), any(), any())).thenReturn(List.of());
         lenient().when(gastoAdminRepository.findByTenantIdAndDateRange(any(), any(), any())).thenReturn(List.of());
         lenient().when(transactionRepository.findByTenantIdAndDateRange(any(), any(), any())).thenReturn(List.of());
-        lenient().when(storeRepository.findByTenantId(TENANT_ID)).thenReturn(List.of(buildStore(STORE_ID)));
-        lenient().when(saleRepository.findByStoreIdAndTenantIdAndDateRangeStrict(
-                eq(STORE_ID), eq(TENANT_ID), any(), any())).thenReturn(List.of());
+        // Una sola query batch para ventas (reemplaza el N+1 por store)
+        lenient().when(saleRepository.findByTenantIdAndDateRangeStrict(eq(TENANT_ID), any(), any()))
+                .thenReturn(List.of());
     }
 
     // ── getOperations — sin filtros ───────────────────────────────────────────
@@ -101,8 +102,8 @@ class OperationsV3ServiceTest {
     void getOperations_returnsSales_whenSalesExist() {
         stubEmptyRepos();
         Sale sale = buildSale(1L, new BigDecimal("300.00"));
-        when(saleRepository.findByStoreIdAndTenantIdAndDateRangeStrict(
-                eq(STORE_ID), eq(TENANT_ID), any(), any())).thenReturn(List.of(sale));
+        when(saleRepository.findByTenantIdAndDateRangeStrict(eq(TENANT_ID), any(), any()))
+                .thenReturn(List.of(sale));
 
         List<OperationDTO> result = operationsService.getOperations(FROM, TO, null, null, "DATE_DESC", 0, 20);
 
@@ -116,9 +117,8 @@ class OperationsV3ServiceTest {
     @Test
     void getOperations_filterBySaleType_doesNotQueryOtherRepos() {
         Sale sale = buildSale(1L, new BigDecimal("200.00"));
-        when(storeRepository.findByTenantId(TENANT_ID)).thenReturn(List.of(buildStore(STORE_ID)));
-        when(saleRepository.findByStoreIdAndTenantIdAndDateRangeStrict(
-                eq(STORE_ID), eq(TENANT_ID), any(), any())).thenReturn(List.of(sale));
+        when(saleRepository.findByTenantIdAndDateRangeStrict(eq(TENANT_ID), any(), any()))
+                .thenReturn(List.of(sale));
 
         List<OperationDTO> result = operationsService.getOperations(FROM, TO, "SALE", null, "DATE_DESC", 0, 20);
 
@@ -135,6 +135,7 @@ class OperationsV3ServiceTest {
         List<OperationDTO> result = operationsService.getOperations(FROM, TO, "CLOSING", null, "DATE_DESC", 0, 20);
 
         assertThat(result).isEmpty();
+        verify(saleRepository, never()).findByTenantIdAndDateRangeStrict(any(), any(), any());
         verify(saleRepository, never()).findByStoreIdAndTenantIdAndDateRangeStrict(any(), any(), any(), any());
     }
 
@@ -169,7 +170,8 @@ class OperationsV3ServiceTest {
         List<OperationDTO> result = operationsService.getOperations(FROM, TO, null, STORE_ID, "DATE_DESC", 0, 20);
 
         assertThat(result).isEmpty();
-        verify(storeRepository, never()).findByTenantId(any()); // usa store-specific, no findAll
+        // Con storeId, usa query por store — nunca la batch por tenant
+        verify(saleRepository, never()).findByTenantIdAndDateRangeStrict(any(), any(), any());
     }
 
     // ── getOperations — paginación ────────────────────────────────────────────
@@ -180,8 +182,8 @@ class OperationsV3ServiceTest {
         Sale s1 = buildSale(1L, new BigDecimal("100.00"));
         Sale s2 = buildSale(2L, new BigDecimal("200.00"));
         Sale s3 = buildSale(3L, new BigDecimal("300.00"));
-        when(saleRepository.findByStoreIdAndTenantIdAndDateRangeStrict(
-                eq(STORE_ID), eq(TENANT_ID), any(), any())).thenReturn(List.of(s1, s2, s3));
+        when(saleRepository.findByTenantIdAndDateRangeStrict(eq(TENANT_ID), any(), any()))
+                .thenReturn(List.of(s1, s2, s3));
 
         List<OperationDTO> result = operationsService.getOperations(FROM, TO, "SALE", null, "DATE_DESC", 0, 2);
 
@@ -194,19 +196,19 @@ class OperationsV3ServiceTest {
         Sale s1 = buildSale(1L, new BigDecimal("100.00"));
         Sale s2 = buildSale(2L, new BigDecimal("200.00"));
         Sale s3 = buildSale(3L, new BigDecimal("300.00"));
-        when(saleRepository.findByStoreIdAndTenantIdAndDateRangeStrict(
-                eq(STORE_ID), eq(TENANT_ID), any(), any())).thenReturn(List.of(s1, s2, s3));
+        when(saleRepository.findByTenantIdAndDateRangeStrict(eq(TENANT_ID), any(), any()))
+                .thenReturn(List.of(s1, s2, s3));
 
         List<OperationDTO> result = operationsService.getOperations(FROM, TO, "SALE", null, "DATE_DESC", 1, 2);
 
-        assertThat(result).hasSize(1); // página 2 con size=2 → solo 1 elemento queda
+        assertThat(result).hasSize(1);
     }
 
     @Test
     void getOperations_beyondLastPage_returnsEmpty() {
         stubEmptyRepos();
-        when(saleRepository.findByStoreIdAndTenantIdAndDateRangeStrict(
-                eq(STORE_ID), eq(TENANT_ID), any(), any())).thenReturn(List.of(buildSale(1L, BigDecimal.TEN)));
+        when(saleRepository.findByTenantIdAndDateRangeStrict(eq(TENANT_ID), any(), any()))
+                .thenReturn(List.of(buildSale(1L, BigDecimal.TEN)));
 
         List<OperationDTO> result = operationsService.getOperations(FROM, TO, "SALE", null, "DATE_DESC", 5, 10);
 
@@ -220,8 +222,8 @@ class OperationsV3ServiceTest {
         stubEmptyRepos();
         Sale s1 = buildSale(1L, new BigDecimal("300.00"));
         Sale s2 = buildSale(2L, new BigDecimal("200.00"));
-        when(saleRepository.findByStoreIdAndTenantIdAndDateRangeStrict(
-                eq(STORE_ID), eq(TENANT_ID), any(), any())).thenReturn(List.of(s1, s2));
+        when(saleRepository.findByTenantIdAndDateRangeStrict(eq(TENANT_ID), any(), any()))
+                .thenReturn(List.of(s1, s2));
 
         OperationSummaryDTO summary = operationsService.getSummary(FROM, TO, null);
 
@@ -234,8 +236,8 @@ class OperationsV3ServiceTest {
     void getSummary_countsAllOperations() {
         stubEmptyRepos();
         Sale sale = buildSale(1L, new BigDecimal("100.00"));
-        when(saleRepository.findByStoreIdAndTenantIdAndDateRangeStrict(
-                eq(STORE_ID), eq(TENANT_ID), any(), any())).thenReturn(List.of(sale));
+        when(saleRepository.findByTenantIdAndDateRangeStrict(eq(TENANT_ID), any(), any()))
+                .thenReturn(List.of(sale));
 
         OperationSummaryDTO summary = operationsService.getSummary(FROM, TO, null);
 

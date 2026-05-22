@@ -33,6 +33,9 @@ public class OperationsV3Service {
     @Autowired private TransactionRepository    transactionRepository;
     @Autowired private StoreRepository          storeRepository;
 
+    private static final Set<String> ALL_TYPES =
+            Set.of("CLOSING", "SALE", "SUPPLIER", "SALARY", "GASTO_ADMIN", "TRANSACTION");
+
     /**
      * Lista unificada de operaciones del tenant con filtros opcionales.
      * Combina: CLOSING, SALE, SUPPLIER, SALARY, GASTO_ADMIN, TRANSACTION
@@ -42,27 +45,12 @@ public class OperationsV3Service {
                                              String typeFilter, Long storeId,
                                              String sort, int page, int size) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
+        if (storeId != null) requireStore(storeId, tenantId);
 
-        // Validar store si se especifica
-        if (storeId != null) {
-            storeRepository.findByIdAndTenantId(storeId, tenantId)
-                    .orElseThrow(() -> new IllegalArgumentException("Local no encontrado"));
-        }
-
-        List<OperationDTO> all = new ArrayList<>();
         Set<String> types = parseTypes(typeFilter);
-
-        if (types.contains("CLOSING")) all.addAll(getClosings(tenantId, from, to, storeId));
-        if (types.contains("SALE"))    all.addAll(getSales(tenantId, from, to, storeId));
-        if (types.contains("SUPPLIER")) all.addAll(getSupplierPayments(tenantId, from, to, storeId));
-        if (types.contains("SALARY"))  all.addAll(getSalaryPayments(tenantId, from, to, storeId));
-        if (types.contains("GASTO_ADMIN")) all.addAll(getGastosAdmin(tenantId, from, to));
-        if (types.contains("TRANSACTION")) all.addAll(getTransactions(tenantId, from, to, storeId));
-
-        // Ordenar
+        List<OperationDTO> all = collectAll(tenantId, from, to, types, storeId);
         sortOperations(all, sort);
 
-        // Paginar
         int fromIdx = page * size;
         if (fromIdx >= all.size()) return List.of();
         return all.subList(fromIdx, Math.min(fromIdx + size, all.size()));
@@ -71,8 +59,9 @@ public class OperationsV3Service {
     @Transactional(readOnly = true)
     public OperationSummaryDTO getSummary(LocalDate from, LocalDate to, Long storeId) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
+        if (storeId != null) requireStore(storeId, tenantId);
 
-        List<OperationDTO> all = getOperations(from, to, null, storeId, "DATE_DESC", 0, Integer.MAX_VALUE);
+        List<OperationDTO> all = collectAll(tenantId, from, to, ALL_TYPES, storeId);
 
         BigDecimal totalIncome  = BigDecimal.ZERO;
         BigDecimal totalExpense = BigDecimal.ZERO;
@@ -100,6 +89,25 @@ public class OperationsV3Service {
                 totalIncome, totalExpense, totalCash, totalCard, byType);
     }
 
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    private void requireStore(Long storeId, Long tenantId) {
+        storeRepository.findByIdAndTenantId(storeId, tenantId)
+                .orElseThrow(() -> new IllegalArgumentException("Local no encontrado"));
+    }
+
+    private List<OperationDTO> collectAll(Long tenantId, LocalDate from, LocalDate to,
+            Set<String> types, Long storeId) {
+        List<OperationDTO> all = new ArrayList<>();
+        if (types.contains("CLOSING"))     all.addAll(getClosings(tenantId, from, to, storeId));
+        if (types.contains("SALE"))        all.addAll(getSales(tenantId, from, to, storeId));
+        if (types.contains("SUPPLIER"))    all.addAll(getSupplierPayments(tenantId, from, to, storeId));
+        if (types.contains("SALARY"))      all.addAll(getSalaryPayments(tenantId, from, to, storeId));
+        if (types.contains("GASTO_ADMIN")) all.addAll(getGastosAdmin(tenantId, from, to));
+        if (types.contains("TRANSACTION")) all.addAll(getTransactions(tenantId, from, to, storeId));
+        return all;
+    }
+
     // ── Conversores por tipo ─────────────────────────────────────────────────
 
     private List<OperationDTO> getClosings(Long tenantId, LocalDate from, LocalDate to, Long storeId) {
@@ -116,16 +124,10 @@ public class OperationsV3Service {
     }
 
     private List<OperationDTO> getSales(Long tenantId, LocalDate from, LocalDate to, Long storeId) {
-        List<Sale> list;
-        // Usar la query strict (sin IS NULL) porque OperationsV3 siempre recibe fechas no-nulas.
-        // La variante nullable falla en Hibernate 6 con parámetros LocalDate no-nulos.
-        if (storeId != null) {
-            list = saleRepository.findByStoreIdAndTenantIdAndDateRangeStrict(storeId, tenantId, from, to);
-        } else {
-            list = storeRepository.findByTenantId(tenantId).stream()
-                    .flatMap(s -> saleRepository.findByStoreIdAndTenantIdAndDateRangeStrict(s.getId(), tenantId, from, to).stream())
-                    .toList();
-        }
+        // findByTenantIdAndDateRangeStrict reemplaza el N+1 (1 query por store) cuando storeId es nulo
+        List<Sale> list = storeId != null
+                ? saleRepository.findByStoreIdAndTenantIdAndDateRangeStrict(storeId, tenantId, from, to)
+                : saleRepository.findByTenantIdAndDateRangeStrict(tenantId, from, to);
 
         return list.stream().map(s -> OperationDTO.of(
                 "SALE", s.getId(), s.getSaleDate(), s.getTotal(),
@@ -210,6 +212,11 @@ public class OperationsV3Service {
     /** Para uso interno del ReportService (sin paginación). */
     @Transactional(readOnly = true)
     public List<OperationDTO> getAllForExport(LocalDate from, LocalDate to, String typeFilter, Long storeId) {
-        return getOperations(from, to, typeFilter, storeId, "DATE_DESC", 0, Integer.MAX_VALUE);
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        if (storeId != null) requireStore(storeId, tenantId);
+        Set<String> types = parseTypes(typeFilter);
+        List<OperationDTO> all = collectAll(tenantId, from, to, types, storeId);
+        sortOperations(all, "DATE_DESC");
+        return all;
     }
 }
