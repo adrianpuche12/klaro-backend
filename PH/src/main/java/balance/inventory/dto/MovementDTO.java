@@ -1,11 +1,12 @@
 package balance.inventory.dto;
 
 import balance.inventory.model.InventoryMovement;
+import lombok.Getter;
 
 import java.time.LocalDateTime;
 
+@Getter
 public class MovementDTO {
-
     private Long id;
     private String type;
     private Integer quantity;
@@ -37,17 +38,4 @@ public class MovementDTO {
         if (m.getStore() != null) dto.storeId = m.getStore().getId();
         return dto;
     }
-
-    public Long getId() { return id; }
-    public String getType() { return type; }
-    public Integer getQuantity() { return quantity; }
-    public String getReason() { return reason; }
-    public String getNotes() { return notes; }
-    public String getUsername() { return username; }
-    public String getPerformedBy() { return performedBy; }
-    public String getSource() { return source; }
-    public Long getProductId() { return productId; }
-    public String getProductName() { return productName; }
-    public Long getStoreId() { return storeId; }
-    public LocalDateTime getCreatedAt() { return createdAt; }
 }

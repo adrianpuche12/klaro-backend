@@ -10,7 +10,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/salary-payments")
-@CrossOrigin(origins = "*")
 public class SalaryPaymentController {
 
     @Autowired

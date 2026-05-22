@@ -1,9 +1,11 @@
 package balance.sales.dto;
 
 import balance.sales.model.Shift;
+import lombok.Getter;
 
 import java.time.LocalDateTime;
 
+@Getter
 public class ShiftResponseDTO {
     private Long id;
     private String code;
@@ -28,13 +30,4 @@ public class ShiftResponseDTO {
         }
         return dto;
     }
-
-    public Long getId() { return id; }
-    public String getCode() { return code; }
-    public String getUsername() { return username; }
-    public String getStatus() { return status; }
-    public Long getStoreId() { return storeId; }
-    public String getStoreName() { return storeName; }
-    public LocalDateTime getOpenedAt() { return openedAt; }
-    public LocalDateTime getClosedAt() { return closedAt; }
 }

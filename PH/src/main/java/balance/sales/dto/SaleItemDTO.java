@@ -1,9 +1,11 @@
 package balance.sales.dto;
 
 import balance.sales.model.SaleItem;
+import lombok.Getter;
 
 import java.math.BigDecimal;
 
+@Getter
 public class SaleItemDTO {
     private Long id;
     private Long productId;
@@ -22,11 +24,4 @@ public class SaleItemDTO {
         if (item.getProduct() != null) dto.productId = item.getProduct().getId();
         return dto;
     }
-
-    public Long getId() { return id; }
-    public Long getProductId() { return productId; }
-    public String getProductName() { return productName; }
-    public BigDecimal getUnitPrice() { return unitPrice; }
-    public Integer getQuantity() { return quantity; }
-    public BigDecimal getSubtotal() { return subtotal; }
 }

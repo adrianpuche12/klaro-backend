@@ -24,7 +24,6 @@ import balance.model.GastoAdmin;
 
 @RestController
 @RequestMapping("/api/operations")
-@CrossOrigin(origins = "*")
 public class OperationsController {
 
     @Autowired

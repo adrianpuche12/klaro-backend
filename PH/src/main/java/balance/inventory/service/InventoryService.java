@@ -33,6 +33,7 @@ public class InventoryService {
     @Autowired private StoreRepository storeRepository;
     @Autowired private CategoryRepository categoryRepository;
 
+    @Transactional
     public List<StockItemDTO> getStock(Long storeId) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         Store store = TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);

@@ -25,7 +25,6 @@ import balance.model.GastoAdmin;
 
 @RestController
 @RequestMapping("/api/forms")
-@CrossOrigin(origins = "*")
 public class FormsController {
     
     @Autowired

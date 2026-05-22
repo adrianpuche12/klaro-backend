@@ -1,12 +1,14 @@
 package balance.inventory.dto;
 
+import balance.catalog.model.Category;
 import balance.inventory.model.InventoryStock;
+import lombok.Getter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+@Getter
 public class StockItemDTO {
-
     private Long stockId;
     private Long productId;
     private String productName;
@@ -38,7 +40,6 @@ public class StockItemDTO {
         dto.productActive = p.getActive();
         dto.price         = p.getPrice();
         dto.minStock      = p.getMinStock();
-        // lowStock solo aplica cuando hay un mínimo definido (minStock > 0)
         dto.lowStock      = p.getMinStock() > 0 && stock.getQuantity() <= p.getMinStock();
 
         if (p.getCategory() != null) {
@@ -53,26 +54,9 @@ public class StockItemDTO {
         return dto;
     }
 
-    private static String buildPath(balance.catalog.model.Category cat) {
+    private static String buildPath(Category cat) {
         if (cat == null) return null;
         if (cat.getParent() == null) return cat.getName();
         return buildPath(cat.getParent()) + " > " + cat.getName();
     }
-
-    public Long getStockId() { return stockId; }
-    public Long getProductId() { return productId; }
-    public String getProductName() { return productName; }
-    public String getProductSku() { return productSku; }
-    public String getProductType() { return productType; }
-    public Boolean getProductActive() { return productActive; }
-    public BigDecimal getPrice() { return price; }
-    public Integer getQuantity() { return quantity; }
-    public Integer getMinStock() { return minStock; }
-    public boolean isLowStock() { return lowStock; }
-    public String getCategoryName() { return categoryName; }
-    public String getCategoryPath() { return categoryPath; }
-    public Long getCategoryId() { return categoryId; }
-    public Long getStoreId() { return storeId; }
-    public String getStoreName() { return storeName; }
-    public LocalDateTime getUpdatedAt() { return updatedAt; }
 }

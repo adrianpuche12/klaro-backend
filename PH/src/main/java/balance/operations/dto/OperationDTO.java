@@ -1,16 +1,19 @@
 package balance.operations.dto;
 
+import lombok.Getter;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /**
  * DTO unificado para el listado de operaciones del panel admin.
- * Representa cualquier tipo de operación: CLOSING, SALE, SUPPLIER, SALARY, GASTO_ADMIN, TRANSACTION.
+ * Representa cualquier tipo: CLOSING, SALE, SUPPLIER, SALARY, GASTO_ADMIN, TRANSACTION.
  */
+@Getter
 public class OperationDTO {
 
     private Long id;
-    private String type;       // CLOSING | SALE | SUPPLIER | SALARY | GASTO_ADMIN | TRANSACTION
+    private String type;
     private LocalDate date;
     private BigDecimal amount;
     private Long storeId;
@@ -39,16 +42,4 @@ public class OperationDTO {
         dto.imageUri      = imageUri;
         return dto;
     }
-
-    public Long getId() { return id; }
-    public String getType() { return type; }
-    public LocalDate getDate() { return date; }
-    public BigDecimal getAmount() { return amount; }
-    public Long getStoreId() { return storeId; }
-    public String getStoreName() { return storeName; }
-    public String getUsername() { return username; }
-    public String getDescription() { return description; }
-    public String getStatus() { return status; }
-    public String getPaymentMethod() { return paymentMethod; }
-    public String getImageUri() { return imageUri; }
 }

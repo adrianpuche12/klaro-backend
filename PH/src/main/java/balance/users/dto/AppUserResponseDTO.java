@@ -1,17 +1,18 @@
 package balance.users.dto;
 
 import balance.users.model.AppUser;
+import lombok.Getter;
 
 import java.time.LocalDateTime;
 
+@Getter
 public class AppUserResponseDTO {
-
-    private Long          id;
-    private String        fullName;
-    private String        username;
-    private String        status;
-    private Long          storeId;
-    private String        storeName;
+    private Long id;
+    private String fullName;
+    private String username;
+    private String status;
+    private Long storeId;
+    private String storeName;
     private LocalDateTime createdAt;
 
     public static AppUserResponseDTO from(AppUser u) {
@@ -27,12 +28,4 @@ public class AppUserResponseDTO {
         }
         return dto;
     }
-
-    public Long getId()                 { return id; }
-    public String getFullName()         { return fullName; }
-    public String getUsername()         { return username; }
-    public String getStatus()           { return status; }
-    public Long getStoreId()            { return storeId; }
-    public String getStoreName()        { return storeName; }
-    public LocalDateTime getCreatedAt() { return createdAt; }
 }

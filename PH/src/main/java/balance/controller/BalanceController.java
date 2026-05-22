@@ -17,7 +17,6 @@ import java.util.Optional;
 
 @RestController
 @RequestMapping("/transactions")
-@CrossOrigin(origins = "*")
 public class BalanceController {
 
     @Autowired
