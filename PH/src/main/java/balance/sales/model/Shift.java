@@ -4,10 +4,14 @@ import balance.common.enums.ShiftStatus;
 import balance.model.Store;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
+import lombok.Getter;
+import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
+@Getter
+@Setter
 @Entity
 @Table(name = "shifts")
 public class Shift {
@@ -20,7 +24,7 @@ public class Shift {
     private Long tenantId;
 
     @Column(nullable = false, unique = true)
-    private String code; // T-2026-0514-DAN
+    private String code;
 
     @NotBlank
     @Column(nullable = false)
@@ -39,26 +43,4 @@ public class Shift {
     private LocalDateTime openedAt;
 
     private LocalDateTime closedAt;
-
-    public Long getId() { return id; }
-
-    public String getCode() { return code; }
-    public void setCode(String code) { this.code = code; }
-
-    public String getUsername() { return username; }
-    public void setUsername(String username) { this.username = username; }
-
-    public ShiftStatus getStatus() { return status; }
-    public void setStatus(ShiftStatus status) { this.status = status; }
-
-    public Store getStore() { return store; }
-    public void setStore(Store store) { this.store = store; }
-
-    public LocalDateTime getOpenedAt() { return openedAt; }
-
-    public LocalDateTime getClosedAt() { return closedAt; }
-    public void setClosedAt(LocalDateTime closedAt) { this.closedAt = closedAt; }
-
-    public Long getTenantId() { return tenantId; }
-    public void setTenantId(Long tenantId) { this.tenantId = tenantId; }
 }

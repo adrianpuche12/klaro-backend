@@ -97,6 +97,13 @@
             <version>2.6.0</version>
         </dependency>
 
+        <!-- Lombok — elimina boilerplate de getters/setters en entidades -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <!-- AWS SDK S3 — compatible con Cloudflare R2 -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>

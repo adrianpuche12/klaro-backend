@@ -5,9 +5,13 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 
+@Getter
+@Setter
 @Entity
 @Table(name = "sale_items")
 public class SaleItem {
@@ -39,25 +43,5 @@ public class SaleItem {
 
     @NotNull
     @Column(nullable = false, precision = 12, scale = 2)
-    private BigDecimal subtotal; // quantity * unitPriceSnapshot
-
-    public Long getId() { return id; }
-
-    public Sale getSale() { return sale; }
-    public void setSale(Sale sale) { this.sale = sale; }
-
-    public Product getProduct() { return product; }
-    public void setProduct(Product product) { this.product = product; }
-
-    public String getProductNameSnapshot() { return productNameSnapshot; }
-    public void setProductNameSnapshot(String productNameSnapshot) { this.productNameSnapshot = productNameSnapshot; }
-
-    public BigDecimal getUnitPriceSnapshot() { return unitPriceSnapshot; }
-    public void setUnitPriceSnapshot(BigDecimal unitPriceSnapshot) { this.unitPriceSnapshot = unitPriceSnapshot; }
-
-    public Integer getQuantity() { return quantity; }
-    public void setQuantity(Integer quantity) { this.quantity = quantity; }
-
-    public BigDecimal getSubtotal() { return subtotal; }
-    public void setSubtotal(BigDecimal subtotal) { this.subtotal = subtotal; }
+    private BigDecimal subtotal;
 }
