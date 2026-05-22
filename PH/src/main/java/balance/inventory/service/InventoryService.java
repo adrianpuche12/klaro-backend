@@ -13,6 +13,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import balance.model.Store;
 import balance.repository.StoreRepository;
 import balance.tenant.context.TenantSecurityUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +24,8 @@ import java.util.List;
 
 @Service
 public class InventoryService {
+
+    private static final Logger log = LoggerFactory.getLogger(InventoryService.class);
 
     @Autowired private InventoryStockRepository stockRepository;
     @Autowired private InventoryMovementRepository movementRepository;
@@ -121,7 +125,12 @@ public class InventoryService {
 
     @Transactional
     public void adjustSilent(Long storeId, StockAdjustmentDTO dto) {
-        try { adjust(storeId, dto); } catch (Exception ignored) {}
+        try {
+            adjust(storeId, dto);
+        } catch (Exception ex) {
+            log.warn("adjustSilent: no se pudo ajustar stock [producto={}, tipo={}, qty={}, local={}]: {}",
+                    dto.getProductId(), dto.getType(), dto.getQuantity(), storeId, ex.getMessage());
+        }
     }
 
     public List<MovementDTO> getMovements(Long storeId) {

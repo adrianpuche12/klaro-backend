@@ -19,6 +19,8 @@ import balance.service.FormsService;
 import balance.tax.service.TaxService;
 import balance.tenant.context.TenantSecurityUtils;
 import balance.tenant.service.TenantConfigService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +34,7 @@ import java.util.*;
 @Service
 public class SalesService {
 
+    private static final Logger log = LoggerFactory.getLogger(SalesService.class);
     private static final ZoneId HONDURAS_TZ = ZoneId.of("America/Tegucigalpa");
     private static final BigDecimal ISV_RATE = BigDecimal.ZERO;
 
@@ -276,13 +279,16 @@ public class SalesService {
             try {
                 StockAdjustmentDTO adj = new StockAdjustmentDTO();
                 adj.setProductId(item.getProduct().getId());
-                adj.setType("SALIDA"); // StockAdjustmentDTO mantiene String para compatibilidad API
+                adj.setType("SALIDA");
                 adj.setQuantity(item.getQuantity());
                 adj.setReason("Venta");
                 adj.setUsername(username);
                 adj.setSource("SALE");
                 inventoryService.adjustSilent(storeId, adj);
-            } catch (Exception ignored) {}
+            } catch (Exception ex) {
+                log.warn("No se pudo descontar stock del producto {} en local {}: {}",
+                        item.getProduct().getId(), storeId, ex.getMessage());
+            }
         }
     }
 
@@ -292,13 +298,16 @@ public class SalesService {
             try {
                 StockAdjustmentDTO adj = new StockAdjustmentDTO();
                 adj.setProductId(item.getProduct().getId());
-                adj.setType("ENTRADA"); // StockAdjustmentDTO mantiene String para compatibilidad API
+                adj.setType("ENTRADA");
                 adj.setQuantity(item.getQuantity());
                 adj.setReason("Cancelación de venta");
                 adj.setUsername(username);
                 adj.setSource("CANCEL");
                 inventoryService.adjustSilent(storeId, adj);
-            } catch (Exception ignored) {}
+            } catch (Exception ex) {
+                log.warn("No se pudo revertir stock del producto {} en local {}: {}",
+                        item.getProduct().getId(), storeId, ex.getMessage());
+            }
         }
     }
 }
