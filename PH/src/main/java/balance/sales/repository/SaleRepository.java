@@ -44,4 +44,17 @@ public interface SaleRepository extends JpaRepository<Sale, Long> {
     long countOpenByShiftIdAndTenantId(
             @Param("shiftId") Long shiftId,
             @Param("tenantId") Long tenantId);
+
+    /** Todas las ventas del tenant en un rango de fechas (batch, evita N+1). */
+    @Query("SELECT s FROM Sale s WHERE s.tenantId = :tenantId AND s.saleDate >= :from AND s.saleDate <= :to")
+    List<Sale> findByTenantIdAndDateRangeStrict(
+            @Param("tenantId") Long tenantId,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to);
+
+    /** Ventas abiertas de varios turnos en una sola query (batch, evita N+1). */
+    @Query("SELECT s FROM Sale s WHERE s.shift.id IN :shiftIds AND s.tenantId = :tenantId AND s.status = 'OPEN'")
+    List<Sale> findOpenByShiftIdsAndTenantId(
+            @Param("shiftIds") List<Long> shiftIds,
+            @Param("tenantId") Long tenantId);
 }

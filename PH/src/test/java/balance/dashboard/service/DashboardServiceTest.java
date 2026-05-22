@@ -26,7 +26,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -46,8 +45,18 @@ class DashboardServiceTest {
     @Mock private InventoryStockRepository stockRepository;
     @Mock private ProductRepository        productRepository;
 
-    @BeforeEach void setTenant()   { TenantContext.setTenantId(TENANT_ID); }
-    @AfterEach  void clearTenant() { TenantContext.clear(); }
+    @BeforeEach
+    void setTenant() {
+        TenantContext.setTenantId(TENANT_ID);
+        // Defaults para las queries batch: sin ventas ni turnos abiertos
+        lenient().when(saleRepository.findByTenantIdAndDateRangeStrict(eq(TENANT_ID), any(), any()))
+                .thenReturn(List.of());
+        lenient().when(shiftRepository.findByTenantIdAndStatus(TENANT_ID, ShiftStatus.OPEN))
+                .thenReturn(List.of());
+    }
+
+    @AfterEach
+    void clearTenant() { TenantContext.clear(); }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -58,7 +67,6 @@ class DashboardServiceTest {
     }
 
     private Shift buildShift(Long id, String code, String user) {
-        // Shift no tiene setId/setOpenedAt públicos → usamos mock
         Shift sh = org.mockito.Mockito.mock(Shift.class);
         org.mockito.Mockito.lenient().when(sh.getId()).thenReturn(id);
         org.mockito.Mockito.lenient().when(sh.getCode()).thenReturn(code);
@@ -70,10 +78,15 @@ class DashboardServiceTest {
     }
 
     private Sale buildSale(BigDecimal total) {
+        return buildSale(total, null);
+    }
+
+    private Sale buildSale(BigDecimal total, Shift shift) {
         Sale s = new Sale();
         s.setTotal(total); s.setSubtotal(total); s.setIsv(BigDecimal.ZERO);
         s.setStatus(SaleStatus.OPEN); s.setSaleDate(LocalDate.now()); s.setUsername("cajero");
         s.setStore(buildStore(STORE_ID)); s.setTenantId(TENANT_ID);
+        if (shift != null) s.setShift(shift);
         return s;
     }
 
@@ -85,17 +98,13 @@ class DashboardServiceTest {
         return st;
     }
 
-    private void stubEmptyStoreData(Long storeId) {
-        lenient().when(shiftRepository.findByStoreIdAndStatusAndTenantId(storeId, ShiftStatus.OPEN, TENANT_ID))
-                .thenReturn(Optional.empty());
+    /** Stubs de inventario vacíos por local (siguen siendo por local en la impl actual). */
+    private void stubEmptyInventory(Long storeId) {
         lenient().when(stockRepository.countLowStockByStoreIdAndTenantId(storeId, TENANT_ID))
                 .thenReturn(0L);
         lenient().when(productRepository.findByStoreIdOrderByNameAsc(storeId))
                 .thenReturn(List.of());
         lenient().when(stockRepository.findByStoreIdAndTenantIdOrderByProductNameAsc(storeId, TENANT_ID))
-                .thenReturn(List.of());
-        lenient().when(saleRepository.findByStoreIdAndTenantIdAndDateRangeStrict(
-                eq(storeId), eq(TENANT_ID), any(LocalDate.class), any(LocalDate.class)))
                 .thenReturn(List.of());
     }
 
@@ -118,7 +127,7 @@ class DashboardServiceTest {
     void getDashboard_storeWithNoActiveShift_hasActiveShiftFalse() {
         Store store = buildStore(STORE_ID);
         when(storeRepository.findByTenantIdAndActive(TENANT_ID, true)).thenReturn(List.of(store));
-        stubEmptyStoreData(STORE_ID);
+        stubEmptyInventory(STORE_ID);
 
         DashboardDTO result = dashboardService.getDashboard();
 
@@ -130,7 +139,7 @@ class DashboardServiceTest {
     void getDashboard_storeWithNoActiveShift_shiftSalesTotalIsZero() {
         Store store = buildStore(STORE_ID);
         when(storeRepository.findByTenantIdAndActive(TENANT_ID, true)).thenReturn(List.of(store));
-        stubEmptyStoreData(STORE_ID);
+        stubEmptyInventory(STORE_ID);
 
         DashboardDTO result = dashboardService.getDashboard();
 
@@ -143,15 +152,11 @@ class DashboardServiceTest {
     void getDashboard_storeWithActiveShift_showsShiftInfo() {
         Store store = buildStore(STORE_ID);
         Shift shift = buildShift(1L, "T-20260521-0900-LOC", "cajero01");
+
         when(storeRepository.findByTenantIdAndActive(TENANT_ID, true)).thenReturn(List.of(store));
-        when(shiftRepository.findByStoreIdAndStatusAndTenantId(STORE_ID, ShiftStatus.OPEN, TENANT_ID))
-                .thenReturn(Optional.of(shift));
-        when(saleRepository.findOpenByShiftIdAndTenantId(1L, TENANT_ID)).thenReturn(List.of());
-        when(stockRepository.countLowStockByStoreIdAndTenantId(STORE_ID, TENANT_ID)).thenReturn(0L);
-        when(productRepository.findByStoreIdOrderByNameAsc(STORE_ID)).thenReturn(List.of());
-        when(stockRepository.findByStoreIdAndTenantIdOrderByProductNameAsc(STORE_ID, TENANT_ID)).thenReturn(List.of());
-        when(saleRepository.findByStoreIdAndTenantIdAndDateRangeStrict(
-                eq(STORE_ID), eq(TENANT_ID), any(), any())).thenReturn(List.of());
+        when(shiftRepository.findByTenantIdAndStatus(TENANT_ID, ShiftStatus.OPEN)).thenReturn(List.of(shift));
+        when(saleRepository.findOpenByShiftIdsAndTenantId(List.of(1L), TENANT_ID)).thenReturn(List.of());
+        stubEmptyInventory(STORE_ID);
 
         DashboardDTO result = dashboardService.getDashboard();
 
@@ -165,17 +170,15 @@ class DashboardServiceTest {
     void getDashboard_activeShiftWithSales_calculatesShiftTotal() {
         Store store = buildStore(STORE_ID);
         Shift shift = buildShift(1L, "T-001", "cajero01");
-        Sale s1 = buildSale(new BigDecimal("150.00"));
-        Sale s2 = buildSale(new BigDecimal("250.00"));
+        Sale s1 = buildSale(new BigDecimal("150.00"), shift);
+        Sale s2 = buildSale(new BigDecimal("250.00"), shift);
+
         when(storeRepository.findByTenantIdAndActive(TENANT_ID, true)).thenReturn(List.of(store));
-        when(shiftRepository.findByStoreIdAndStatusAndTenantId(STORE_ID, ShiftStatus.OPEN, TENANT_ID))
-                .thenReturn(Optional.of(shift));
-        when(saleRepository.findOpenByShiftIdAndTenantId(1L, TENANT_ID)).thenReturn(List.of(s1, s2));
-        when(stockRepository.countLowStockByStoreIdAndTenantId(STORE_ID, TENANT_ID)).thenReturn(0L);
-        when(productRepository.findByStoreIdOrderByNameAsc(STORE_ID)).thenReturn(List.of());
-        when(stockRepository.findByStoreIdAndTenantIdOrderByProductNameAsc(STORE_ID, TENANT_ID)).thenReturn(List.of());
-        when(saleRepository.findByStoreIdAndTenantIdAndDateRangeStrict(
-                eq(STORE_ID), eq(TENANT_ID), any(), any())).thenReturn(List.of(s1, s2));
+        when(shiftRepository.findByTenantIdAndStatus(TENANT_ID, ShiftStatus.OPEN)).thenReturn(List.of(shift));
+        when(saleRepository.findOpenByShiftIdsAndTenantId(List.of(1L), TENANT_ID)).thenReturn(List.of(s1, s2));
+        when(saleRepository.findByTenantIdAndDateRangeStrict(eq(TENANT_ID), any(), any()))
+                .thenReturn(List.of(s1, s2));
+        stubEmptyInventory(STORE_ID);
 
         DashboardDTO result = dashboardService.getDashboard();
 
@@ -189,22 +192,19 @@ class DashboardServiceTest {
     @Test
     void getDashboard_calculatesEstimatedInventoryValue() {
         Store store = buildStore(STORE_ID);
-        InventoryStock stock1 = buildStock(10, new BigDecimal("50.00"));  // 500
-        InventoryStock stock2 = buildStock(5,  new BigDecimal("200.00")); // 1000
+        InventoryStock stock1 = buildStock(10, new BigDecimal("50.00"));
+        InventoryStock stock2 = buildStock(5,  new BigDecimal("200.00"));
+
         when(storeRepository.findByTenantIdAndActive(TENANT_ID, true)).thenReturn(List.of(store));
-        when(shiftRepository.findByStoreIdAndStatusAndTenantId(STORE_ID, ShiftStatus.OPEN, TENANT_ID))
-                .thenReturn(Optional.empty());
         when(stockRepository.countLowStockByStoreIdAndTenantId(STORE_ID, TENANT_ID)).thenReturn(2L);
         when(productRepository.findByStoreIdOrderByNameAsc(STORE_ID)).thenReturn(List.of());
         when(stockRepository.findByStoreIdAndTenantIdOrderByProductNameAsc(STORE_ID, TENANT_ID))
                 .thenReturn(List.of(stock1, stock2));
-        when(saleRepository.findByStoreIdAndTenantIdAndDateRangeStrict(
-                eq(STORE_ID), eq(TENANT_ID), any(), any())).thenReturn(List.of());
 
         DashboardDTO result = dashboardService.getDashboard();
 
         var storeDTO = result.getStores().get(0);
-        assertThat(storeDTO.getEstimatedValue()).isEqualByComparingTo("1500.00"); // 500 + 1000
+        assertThat(storeDTO.getEstimatedValue()).isEqualByComparingTo("1500.00");
         assertThat(storeDTO.getLowStockCount()).isEqualTo(2L);
     }
 
@@ -218,12 +218,10 @@ class DashboardServiceTest {
         Sale saleB = buildSale(new BigDecimal("200.00"));
 
         when(storeRepository.findByTenantIdAndActive(TENANT_ID, true)).thenReturn(List.of(storeA, storeB));
-        stubEmptyStoreData(1L);
-        stubEmptyStoreData(2L);
-        when(saleRepository.findByStoreIdAndTenantIdAndDateRangeStrict(eq(1L), eq(TENANT_ID), any(), any()))
-                .thenReturn(List.of(saleA));
-        when(saleRepository.findByStoreIdAndTenantIdAndDateRangeStrict(eq(2L), eq(TENANT_ID), any(), any()))
-                .thenReturn(List.of(saleB));
+        when(saleRepository.findByTenantIdAndDateRangeStrict(eq(TENANT_ID), any(), any()))
+                .thenReturn(List.of(saleA, saleB));
+        stubEmptyInventory(1L);
+        stubEmptyInventory(2L);
 
         DashboardDTO result = dashboardService.getDashboard();
 

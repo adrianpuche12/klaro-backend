@@ -21,4 +21,7 @@ public interface ShiftRepository extends JpaRepository<Shift, Long> {
 
     /** Busca un shift por id validando que pertenezca al tenant. */
     Optional<Shift> findByIdAndTenantId(Long id, Long tenantId);
+
+    /** Todos los turnos con un estado dado para el tenant (batch, evita N+1). */
+    List<Shift> findByTenantIdAndStatus(Long tenantId, ShiftStatus status);
 }
