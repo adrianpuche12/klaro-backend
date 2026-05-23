@@ -24,7 +24,7 @@ jobs:
 
       - name: Compilar y ejecutar tests
         working-directory: ./PH
-        run: mvn clean test -B
+        run: mvn clean test -B -e
         env:
           DB_URL: ${{ secrets.DB_URL_DEV }}
           DB_USER: ${{ secrets.DB_USER }}
