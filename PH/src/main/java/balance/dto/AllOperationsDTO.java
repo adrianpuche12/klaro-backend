@@ -223,10 +223,6 @@ public class AllOperationsDTO {
     public void setImageUri(String imageUri) { this.imageUri = imageUri; }
 
 
-    // ================================================================
-// AGREGAR ESTE MÉTODO CONSTRUCTOR ESTÁTICO A LA CLASE AllOperationsDTO
-// ================================================================
-
     public static AllOperationsDTO fromGastoAdmin(balance.model.GastoAdmin gastoAdmin) {
         AllOperationsDTO dto = new AllOperationsDTO();
         dto.setId(gastoAdmin.getId());

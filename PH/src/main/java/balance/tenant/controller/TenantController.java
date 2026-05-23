@@ -14,8 +14,7 @@ import java.util.List;
 
 /**
  * Endpoints de gestión de tenants.
- * TODO Sprint 2: proteger con @PreAuthorize("hasRole('ROOT')") cuando haya JWT.
- * Por ahora: solo accesible si tenantId = 0 (ROOT) vía header X-Tenant-ID.
+ * Protegido mediante isRoot() — requiere tenantId = 0 (extraído del JWT via TenantFilter).
  */
 @RestController
 @RequestMapping("/api/v3/tenants")

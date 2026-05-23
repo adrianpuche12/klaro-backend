@@ -103,11 +103,6 @@ public class OperationsController {
             @PathVariable Long id,
             @RequestBody AllOperationsDTO dto) {
         switch (type.toUpperCase()) {
-
-            // ================================================================
-// MODIFICAR EL MÉTODO updateOperation() - AGREGAR ESTE CASO AL SWITCH
-// ================================================================
-
             case "GASTO_ADMIN":
                 GastoAdmin gastoAdmin = new GastoAdmin();
                 gastoAdmin.setMonto(dto.getAmount());
@@ -212,10 +207,6 @@ public class OperationsController {
             @PathVariable String type,
             @PathVariable Long id) {
         switch (type.toUpperCase()) {
-            // ================================================================
-// MODIFICAR EL MÉTODO deleteOperation() - AGREGAR ESTE CASO AL SWITCH
-// ================================================================
-
             case "GASTO_ADMIN":
                 formsService.deleteGastoAdmin(id);
                 break;

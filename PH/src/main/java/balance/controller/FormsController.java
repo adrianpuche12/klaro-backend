@@ -7,21 +7,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import java.time.LocalDate;
-import java.util.List;
-
-
-// ================================================================
-// AGREGAR ESTOS IMPORTS AL INICIO DEL ARCHIVO
-// ================================================================
 import balance.dto.GastoAdminRequestDTO;
 import balance.dto.GastoAdminResponseDTO;
 import balance.model.GastoAdmin;
+import java.time.LocalDate;
+import java.util.List;
 
-
-/*
- Endpoints para la gestión de depósitos de cierres, pagos a proveedores y salarios.
- */
+/** Endpoints para la gestión de depósitos de cierres, pagos a proveedores y salarios. */
 
 @RestController
 @RequestMapping("/api/forms")
@@ -60,38 +52,6 @@ public class FormsController {
     public ResponseEntity<List<ClosingDeposit>> getAllClosingDeposits() {
         return ResponseEntity.ok(formsService.getAllClosingDeposits());
     }
-    /**
-     * Obtiene todos los depósitos de cierre en un rango de fechas.
-     * 
-     * @param startDate Fecha inicial del rango (formato: YYYY-MM-DD)
-     * @param endDate Fecha final del rango (formato: YYYY-MM-DD)
-     * @return ResponseEntity
-     * con la lista de depósitos encontrados
-     */
-
-
-// ================================================================
-// AGREGAR ESTOS MÉTODOS AL FormsController EXISTENTE
-// ================================================================
-
-    /**
-     * Crea un nuevo gasto administrativo.
-     * Este endpoint tiene lógica especial: divide el monto entre locales y crea
-     * transacciones individuales para cada local según los porcentajes especificados.
-     * 
-     * @param request Objeto GastoAdminRequestDTO con los datos del gasto administrativo
-     * @return ResponseEntity con el resumen de transacciones creadas
-     * 
-     * Ejemplo de JSON requerido:
-     * {
-     *     "fecha": "2024-01-15",
-     *     "monto": 1000.00,
-     *     "descripcion": "Pago de electricidad",
-     *     "tipo": "expense",
-     *     "porcentajeDanli": 60,
-     *     "porcentajeParaiso": 40
-     * }
-     */
     @PostMapping("/gasto-admin")
     public ResponseEntity<GastoAdminResponseDTO> addGastoAdmin(
             @Valid @RequestBody GastoAdminRequestDTO request) {
@@ -137,7 +97,6 @@ public class FormsController {
         return ResponseEntity.ok(formsService.getClosingDeposits(startDate, endDate));
     }
 
-    // 🆕 Endpoint para filtrar por store ID
     @GetMapping("/closing-deposits/store/{storeId}")
     public ResponseEntity<List<ClosingDeposit>> getByStoreId(@PathVariable Long storeId) {
         return ResponseEntity.ok(formsService.findByStoreId(storeId));
