@@ -1,0 +1,8 @@
+services:
+  belopia-backend-dev:
+    image: adrianpuche/belopia-backend:dev-latest
+    container_name: belopia-backend-dev
+    restart: unless-stopped
+    ports:
+      - "8111:8080"
+    env_file: .env
