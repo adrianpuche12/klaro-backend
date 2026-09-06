@@ -19,6 +19,7 @@ import balance.tax.repository.TaxRepository;
 import balance.tax.service.TaxService;
 import balance.tenant.context.TenantContext;
 import balance.tenant.context.TenantSecurityUtils;
+import balance.users.model.AppUser;
 import balance.users.repository.AppUserRepository;
 import balance.users.service.AppUserService;
 import balance.users.service.KeycloakAdminService;
@@ -61,6 +62,11 @@ class TenantIsolationTest {
     @Mock private ClosingDepositRepository    closingDepositRepository;
     @Mock private SupplierPaymentRepository   supplierPaymentRepository;
     @Mock private SalaryPaymentRepository     salaryPaymentRepository;
+
+    // ── Mocks para AppUserService (SPRINT-09) ───────────────────────────────────
+    @InjectMocks private AppUserService appUserService;
+    @Mock private AppUserRepository     appUserRepository;
+    @Mock private KeycloakAdminService  keycloakAdminService;
 
     @AfterEach void clearContext() { TenantContext.clear(); }
 
@@ -238,5 +244,28 @@ class TenantIsolationTest {
 
         assertThat(result).isEmpty();
         verify(storeRepository, never()).save(any());
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // AppUserService.updateStoreAccess — SPRINT-09
+    // Un admin del tenant A no puede asignarle a un usuario del tenant A
+    // un local del tenant B. Este es exactamente el hueco de seguridad que
+    // PH v2 nunca tuvo que cerrar (single-tenant) y que Belopia sí necesita.
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    @Test
+    void updateStoreAccess_adminCannotAssignForeignTenantStore_toOwnUser() {
+        TenantContext.setTenantId(TENANT_A);
+        AppUser ownUser = new AppUser();
+        ownUser.setId(5L);
+        ownUser.setTenantId(TENANT_A);
+        when(appUserRepository.findByIdAndTenantId(5L, TENANT_A)).thenReturn(Optional.of(ownUser));
+        // El store 99 pertenece a TENANT_B -> no existe bajo TENANT_A
+        when(storeRepository.findByIdAndTenantId(99L, TENANT_A)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> appUserService.updateStoreAccess(5L, List.of(99L)))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verify(appUserRepository, never()).save(any());
     }
 }

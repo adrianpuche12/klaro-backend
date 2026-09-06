@@ -2,6 +2,7 @@ package balance.inventory.controller;
 
 import balance.inventory.dto.*;
 import balance.inventory.service.InventoryService;
+import balance.users.service.PermissionGuard;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +30,7 @@ class InventoryControllerTest {
     @Autowired private ObjectMapper objectMapper;
 
     @MockBean private InventoryService inventoryService;
+    @MockBean private PermissionGuard  permissionGuard; // no-op por defecto en Mockito (void) -- equivale a usuario legacy
 
     // â”€â”€ GET /api/v2/stores/{storeId}/stock â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

@@ -22,6 +22,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -350,5 +351,110 @@ class AppUserServiceTest {
         assertThatThrownBy(() -> appUserService.findByUsername("desconocido"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Usuario no encontrado");
+    }
+
+    // ── create — perfil acotado (SPRINT-09) ──────────────────────────────────
+
+    @Test
+    void create_allowsNullStoreId_forRestrictedProfile() {
+        when(userRepository.existsByUsernameAndTenantId("contador01", TENANT_ID)).thenReturn(false);
+        when(keycloakAdmin.createUser(any(), any(), any(), any(), any())).thenReturn("kc-uuid-nuevo");
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        AppUserRequestDTO dto = buildRequest("contador01", "Contador Uno", null);
+        dto.setBusinessRole("CONTADOR");
+
+        AppUserResponseDTO result = appUserService.create(dto);
+
+        assertThat(result.getStoreId()).isNull();
+        verify(storeRepository, never()).findByIdAndTenantId(any(), any());
+    }
+
+    @Test
+    void create_savesBusinessRoleAndPermissionsAndAccessibleStores() {
+        when(userRepository.existsByUsernameAndTenantId("contador01", TENANT_ID)).thenReturn(false);
+        when(storeRepository.findByIdAndTenantId(2L, TENANT_ID)).thenReturn(Optional.of(buildStore(2L, "El Paraiso")));
+        when(storeRepository.findByIdAndTenantId(3L, TENANT_ID)).thenReturn(Optional.of(buildStore(3L, "Danli 2")));
+        when(keycloakAdmin.createUser(any(), any(), any(), any(), any())).thenReturn("kc-uuid-nuevo");
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        AppUserRequestDTO dto = buildRequest("contador01", "Contador Uno", null);
+        dto.setBusinessRole("CONTADOR");
+        dto.setPermissions(List.of("DASHBOARD", "SALES_HISTORY"));
+        dto.setStoreIds(List.of(2L, 3L));
+
+        ArgumentCaptor<AppUser> captor = ArgumentCaptor.forClass(AppUser.class);
+        appUserService.create(dto);
+        verify(userRepository).save(captor.capture());
+
+        assertThat(captor.getValue().getBusinessRole()).isEqualTo("CONTADOR");
+        assertThat(captor.getValue().getPermissions()).containsExactlyInAnyOrder("DASHBOARD", "SALES_HISTORY");
+        assertThat(captor.getValue().getAccessibleStores()).extracting("id").containsExactlyInAnyOrder(2L, 3L);
+    }
+
+    @Test
+    void create_throwsWhenAccessibleStoreBelongsToAnotherTenant() {
+        when(userRepository.existsByUsernameAndTenantId("contador01", TENANT_ID)).thenReturn(false);
+        when(storeRepository.findByIdAndTenantId(99L, TENANT_ID)).thenReturn(Optional.empty());
+
+        AppUserRequestDTO dto = buildRequest("contador01", "Contador Uno", null);
+        dto.setStoreIds(List.of(99L));
+
+        assertThatThrownBy(() -> appUserService.create(dto))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(keycloakAdmin);
+    }
+
+    // ── updatePermissions ─────────────────────────────────────────────────────
+
+    @Test
+    void updatePermissions_replacesPermissionSet() {
+        AppUser user = buildUser(1L, "cajero01", AppUserStatus.ACTIVE);
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        AppUserResponseDTO result = appUserService.updatePermissions(1L, List.of("INVENTORY", "CATALOG"));
+
+        assertThat(result.getPermissions()).containsExactlyInAnyOrder("INVENTORY", "CATALOG");
+    }
+
+    @Test
+    void updatePermissions_emptyListMeansNoAccess() {
+        AppUser user = buildUser(1L, "cajero01", AppUserStatus.ACTIVE);
+        user.setPermissions(new java.util.HashSet<>(Set.of("DASHBOARD")));
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        appUserService.updatePermissions(1L, null);
+
+        assertThat(user.getPermissions()).isEmpty();
+    }
+
+    // ── updateStoreAccess ─────────────────────────────────────────────────────
+
+    @Test
+    void updateStoreAccess_replacesAccessibleStores() {
+        AppUser user = buildUser(1L, "cajero01", AppUserStatus.ACTIVE);
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
+        when(storeRepository.findByIdAndTenantId(2L, TENANT_ID)).thenReturn(Optional.of(buildStore(2L, "El Paraiso")));
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        AppUserResponseDTO result = appUserService.updateStoreAccess(1L, List.of(2L));
+
+        assertThat(result.getAccessibleStoreIds()).containsExactly(2L);
+    }
+
+    @Test
+    void updateStoreAccess_throwsWhenStoreBelongsToAnotherTenant() {
+        AppUser user = buildUser(1L, "cajero01", AppUserStatus.ACTIVE);
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
+        // Store 77 pertenece a otro tenant -> no existe bajo TENANT_ID
+        when(storeRepository.findByIdAndTenantId(77L, TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> appUserService.updateStoreAccess(1L, List.of(77L)))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verify(userRepository, never()).save(any());
     }
 }

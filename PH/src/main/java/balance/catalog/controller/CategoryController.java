@@ -3,6 +3,8 @@ package balance.catalog.controller;
 import balance.catalog.dto.CategoryRequestDTO;
 import balance.catalog.dto.CategoryResponseDTO;
 import balance.catalog.service.CategoryService;
+import balance.users.model.PermissionModule;
+import balance.users.service.PermissionGuard;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -18,9 +20,13 @@ public class CategoryController {
     @Autowired
     private CategoryService categoryService;
 
-    // Ãrbol completo de categorÃ­as de un local
+    @Autowired
+    private PermissionGuard permissionGuard;
+
+    //Ãrbol completo de categorÃ­as de un local
     @GetMapping("/api/v2/stores/{storeId}/categories")
     public ResponseEntity<List<CategoryResponseDTO>> getTree(@PathVariable Long storeId) {
+        permissionGuard.assertAccess(PermissionModule.CATALOG, storeId);
         return ResponseEntity.ok(categoryService.getTree(storeId));
     }
 

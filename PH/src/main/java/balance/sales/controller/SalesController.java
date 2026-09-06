@@ -2,6 +2,8 @@ package balance.sales.controller;
 
 import balance.sales.dto.*;
 import balance.sales.service.SalesService;
+import balance.users.model.PermissionModule;
+import balance.users.service.PermissionGuard;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -19,6 +21,9 @@ public class SalesController {
 
     @Autowired
     private SalesService salesService;
+
+    @Autowired
+    private PermissionGuard permissionGuard;
 
     // Registrar venta en un turno
     @PostMapping("/shifts/{shiftId}/sales")
@@ -74,6 +79,7 @@ public class SalesController {
             @PathVariable Long storeId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        permissionGuard.assertAccess(PermissionModule.SALES_HISTORY, storeId);
         return ResponseEntity.ok(salesService.getSalesByStore(storeId, from, to));
     }
 
@@ -84,6 +90,7 @@ public class SalesController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         try {
+            permissionGuard.assertAccess(PermissionModule.SALES_HISTORY, storeId);
             return ResponseEntity.ok(salesService.getSummaryByStore(storeId, from, to));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));

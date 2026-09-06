@@ -2,6 +2,8 @@ package balance.controller;
 
 import balance.model.Transaction;
 import balance.service.TransactionService;
+import balance.users.model.PermissionModule;
+import balance.users.service.PermissionGuard;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -15,6 +17,9 @@ public class TransactionController {
 
     @Autowired
     private TransactionService transactionService;
+
+    @Autowired
+    private PermissionGuard permissionGuard;
 
 //    @GetMapping
 //    public ResponseEntity<List<Transaction>> getAll() {
@@ -54,6 +59,7 @@ public class TransactionController {
 
     @GetMapping("/store/{storeId}")
     public ResponseEntity<List<Transaction>> getByStoreId(@PathVariable Long storeId) {
+        permissionGuard.assertAccess(PermissionModule.TRANSACTIONS, storeId);
         return ResponseEntity.ok(transactionService.findByStoreId(storeId));
     }
 
@@ -62,6 +68,7 @@ public class TransactionController {
         @RequestParam LocalDate startDate,
         @RequestParam LocalDate endDate,
         @RequestParam Long storeId) {
+        permissionGuard.assertAccess(PermissionModule.TRANSACTIONS, storeId);
         return ResponseEntity.ok(transactionService.findByDateBetweenAndStoreId(startDate, endDate, storeId));
     }
 }

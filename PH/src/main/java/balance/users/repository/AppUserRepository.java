@@ -16,5 +16,7 @@ public interface AppUserRepository extends JpaRepository<AppUser, Long> {
 
     Optional<AppUser> findByIdAndTenantId(Long id, Long tenantId);
 
+    Optional<AppUser> findByKeycloakIdAndTenantId(String keycloakId, Long tenantId);
+
     boolean existsByUsernameAndTenantId(String username, Long tenantId);
 }

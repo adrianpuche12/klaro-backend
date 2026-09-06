@@ -3,6 +3,8 @@ package balance.catalog.controller;
 import balance.catalog.dto.ProductRequestDTO;
 import balance.catalog.dto.ProductResponseDTO;
 import balance.catalog.service.ProductService;
+import balance.users.model.PermissionModule;
+import balance.users.service.PermissionGuard;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -19,12 +21,16 @@ public class ProductController {
     @Autowired
     private ProductService productService;
 
+    @Autowired
+    private PermissionGuard permissionGuard;
+
     @GetMapping("/api/v2/stores/{storeId}/products")
     public ResponseEntity<List<ProductResponseDTO>> getByStore(
             @PathVariable Long storeId,
             @RequestParam(required = false) Boolean active,
             @RequestParam(required = false) Long categoryId,
             @RequestParam(required = false) String search) {
+        permissionGuard.assertAccess(PermissionModule.CATALOG, storeId);
         return ResponseEntity.ok(productService.findByStore(storeId, active, categoryId, search));
     }
 

@@ -2,6 +2,7 @@ package balance.sales.controller;
 
 import balance.sales.dto.*;
 import balance.sales.service.SalesService;
+import balance.users.service.PermissionGuard;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,7 +30,8 @@ class SalesControllerTest {
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
 
-    @MockBean private SalesService salesService;
+    @MockBean private SalesService    salesService;
+    @MockBean private PermissionGuard permissionGuard;
 
     // â”€â”€ POST /api/v2/shifts/{shiftId}/sales â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

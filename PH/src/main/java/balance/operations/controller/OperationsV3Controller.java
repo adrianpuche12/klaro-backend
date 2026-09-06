@@ -4,6 +4,8 @@ import balance.operations.dto.OperationDTO;
 import balance.operations.dto.OperationSummaryDTO;
 import balance.operations.service.OperationsV3Service;
 import balance.operations.service.ReportService;
+import balance.users.model.PermissionModule;
+import balance.users.service.PermissionGuard;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ContentDisposition;
@@ -22,6 +24,7 @@ public class OperationsV3Controller {
 
     @Autowired private OperationsV3Service operationsService;
     @Autowired private ReportService        reportService;
+    @Autowired private PermissionGuard      permissionGuard;
 
     /**
      * Lista unificada de operaciones con filtros y paginación.
@@ -36,6 +39,8 @@ public class OperationsV3Controller {
             @RequestParam(defaultValue = "DATE_DESC") String sort,
             @RequestParam(defaultValue = "0")  int page,
             @RequestParam(defaultValue = "20") int size) {
+
+        permissionGuard.assertAccess(PermissionModule.OPERATIONS, storeId);
 
         // Defaults: último mes si no se especifica rango
         LocalDate effectiveTo   = to   != null ? to   : LocalDate.now();
@@ -55,6 +60,8 @@ public class OperationsV3Controller {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) Long storeId) {
 
+        permissionGuard.assertAccess(PermissionModule.OPERATIONS, storeId);
+
         LocalDate effectiveTo   = to   != null ? to   : LocalDate.now();
         LocalDate effectiveFrom = from != null ? from : effectiveTo.minusMonths(1);
 
@@ -72,6 +79,11 @@ public class OperationsV3Controller {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) String type,
             @RequestParam(required = false) Long storeId) {
+
+        // Fuera del try/catch de abajo: si el guard deniega, tiene que propagar
+        // como 403 real (via Spring Security), no quedar envuelto en el 500
+        // genérico que ese catch usa para errores de generación de reporte.
+        permissionGuard.assertAccess(PermissionModule.OPERATIONS, storeId);
 
         LocalDate effectiveTo   = to   != null ? to   : LocalDate.now();
         LocalDate effectiveFrom = from != null ? from : effectiveTo.minusMonths(1);
