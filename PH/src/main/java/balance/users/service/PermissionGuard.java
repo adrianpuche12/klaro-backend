@@ -13,6 +13,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 
+import java.util.Optional;
+
 /**
  * Guard de acceso granular server-side. PH v2 no tiene ningún equivalente
  * de esto — su restricción por perfil/local es 100% frontend (ver
@@ -42,17 +44,12 @@ public class PermissionGuard {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         String keycloakId = currentKeycloakId();
 
-        AppUser user = userRepository.findByKeycloakIdAndTenantId(keycloakId, tenantId)
-                .orElseThrow(() -> new AccessDeniedException("Acceso denegado"));
-
-        boolean isLegacyUser = user.getBusinessRole() == null
-                && user.getPermissions().isEmpty()
-                && user.getAccessibleStores().isEmpty();
-        if (isLegacyUser) {
+        Optional<AppUser> user = userRepository.findByKeycloakIdAndTenantId(keycloakId, tenantId);
+        if (isLegacy(user)) {
             return;
         }
 
-        if (!user.getPermissions().contains(module.name())) {
+        if (!user.get().getPermissions().contains(module.name())) {
             throw new AccessDeniedException("No tenés acceso a este módulo");
         }
     }
@@ -70,17 +67,11 @@ public class PermissionGuard {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         String keycloakId = currentKeycloakId();
 
-        AppUser user = userRepository.findByKeycloakIdAndTenantId(keycloakId, tenantId)
-                .orElseThrow(() -> new AccessDeniedException("Acceso denegado"));
-
-        // Excepción legacy: usuario creado antes de SPRINT-09, sin ningún dato
-        // de perfil acotado -> mismo comportamiento que tenía antes (acceso total).
-        boolean isLegacyUser = user.getBusinessRole() == null
-                && user.getPermissions().isEmpty()
-                && user.getAccessibleStores().isEmpty();
-        if (isLegacyUser) {
+        Optional<AppUser> maybeUser = userRepository.findByKeycloakIdAndTenantId(keycloakId, tenantId);
+        if (isLegacy(maybeUser)) {
             return;
         }
+        AppUser user = maybeUser.get();
 
         if (storeId == null) {
             throw new AccessDeniedException("Debés especificar un local");
@@ -100,6 +91,26 @@ public class PermissionGuard {
         if (!user.getPermissions().contains(module.name())) {
             throw new AccessDeniedException("No tenés acceso a este módulo");
         }
+    }
+
+    /**
+     * Un usuario cuenta como "legacy" (acceso total, sin restricción) en dos casos:
+     * (a) no tiene fila en app_users para este keycloakId+tenant — hoy es el caso
+     *     de TODOS los usuarios reales de Belopia, porque la migración a Contabo
+     *     (SPRINT-08C) partió de un schema vacío, sin datos migrados; antes de
+     *     SPRINT-09 nada validaba contra app_users para autorizar, así que negar
+     *     acceso acá sería una regresión real, no una mejora de seguridad; o
+     * (b) tiene fila pero fue creada antes de SPRINT-09 — sin businessRole ni
+     *     ninguna fila en permissions/accessibleStores.
+     */
+    private boolean isLegacy(Optional<AppUser> maybeUser) {
+        if (maybeUser.isEmpty()) {
+            return true;
+        }
+        AppUser user = maybeUser.get();
+        return user.getBusinessRole() == null
+                && user.getPermissions().isEmpty()
+                && user.getAccessibleStores().isEmpty();
     }
 
     private String currentKeycloakId() {
