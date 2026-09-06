@@ -92,6 +92,28 @@ public class AppUserController {
         }
     }
 
+    /** Actualiza los módulos habilitados del usuario. Solo admin y root. */
+    @PreAuthorize("hasAnyRole('root', 'admin')")
+    @PutMapping("/{id}/permissions")
+    public ResponseEntity<?> updatePermissions(@PathVariable Long id, @RequestBody Map<String, List<String>> body) {
+        try {
+            return ResponseEntity.ok(userService.updatePermissions(id, body.get("permissions")));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** Actualiza los locales accesibles del usuario. Solo admin y root. */
+    @PreAuthorize("hasAnyRole('root', 'admin')")
+    @PutMapping("/{id}/store-access")
+    public ResponseEntity<?> updateStoreAccess(@PathVariable Long id, @RequestBody Map<String, List<Long>> body) {
+        try {
+            return ResponseEntity.ok(userService.updateStoreAccess(id, body.get("storeIds")));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     /** Resetea la contraseña del usuario. Solo admin y root. */
     @PreAuthorize("hasAnyRole('root', 'admin')")
     @PutMapping("/{id}/reset-password")

@@ -5,6 +5,7 @@ import balance.operations.dto.OperationDTO;
 import balance.operations.dto.OperationSummaryDTO;
 import balance.operations.service.OperationsV3Service;
 import balance.operations.service.ReportService;
+import balance.users.service.PermissionGuard;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,6 +38,7 @@ class OperationsV3ControllerTest {
 
     @MockBean OperationsV3Service operationsService;
     @MockBean ReportService       reportService;
+    @MockBean PermissionGuard     permissionGuard;
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

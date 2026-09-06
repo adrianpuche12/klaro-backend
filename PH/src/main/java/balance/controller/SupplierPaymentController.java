@@ -2,6 +2,8 @@ package balance.controller;
 
 import balance.model.SupplierPayment;
 import balance.service.SupplierPaymentService;
+import balance.users.model.PermissionModule;
+import balance.users.service.PermissionGuard;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,6 +16,9 @@ public class SupplierPaymentController {
 
     @Autowired
     private SupplierPaymentService supplierPaymentService;
+
+    @Autowired
+    private PermissionGuard permissionGuard;
 
 //    @GetMapping
 //    public ResponseEntity<List<SupplierPayment>> getAll() {
@@ -51,6 +56,7 @@ public class SupplierPaymentController {
     // 🆕 Endpoint para obtener pagos por store
     @GetMapping("/store/{storeId}")
     public ResponseEntity<List<SupplierPayment>> getByStoreId(@PathVariable Long storeId) {
+        permissionGuard.assertAccess(PermissionModule.SUPPLIER_PAYMENTS, storeId);
         return ResponseEntity.ok(supplierPaymentService.findByStoreId(storeId));
     }
 }

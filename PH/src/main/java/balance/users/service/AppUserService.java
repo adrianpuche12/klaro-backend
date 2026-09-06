@@ -14,9 +14,9 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Set;
-
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
 public class AppUserService {
@@ -59,7 +59,18 @@ public class AppUserService {
             throw new IllegalArgumentException("El username '" + dto.getUsername() + "' ya esta en uso");
         }
 
-        Store store = TenantSecurityUtils.requireStore(dto.getStoreId(), tenantId, storeRepository);
+        // storeId ya no es obligatorio (SPRINT-09): un perfil de solo lectura
+        // (contador, socio) puede no tener local principal fijo.
+        Store store = dto.getStoreId() != null
+                ? TenantSecurityUtils.requireStore(dto.getStoreId(), tenantId, storeRepository)
+                : null;
+
+        Set<Store> accessibleStores = new HashSet<>();
+        if (dto.getStoreIds() != null) {
+            for (Long sid : dto.getStoreIds()) {
+                accessibleStores.add(TenantSecurityUtils.requireStore(sid, tenantId, storeRepository));
+            }
+        }
 
         // Crea en Keycloak con rol correcto y atributo tenant_id para que el JWT lo incluya
         String keycloakId = keycloakAdmin.createUser(
@@ -72,7 +83,39 @@ public class AppUserService {
         user.setStore(store);
         user.setStatus(AppUserStatus.ACTIVE);
         user.setTenantId(tenantId);
+        user.setBusinessRole(dto.getBusinessRole());
+        if (dto.getPermissions() != null) {
+            user.setPermissions(new HashSet<>(dto.getPermissions()));
+        }
+        user.setAccessibleStores(accessibleStores);
 
+        return AppUserResponseDTO.from(userRepository.save(user));
+    }
+
+    // ── Actualizar permisos de módulos ───────────────────────────────────────
+
+    @Transactional
+    public AppUserResponseDTO updatePermissions(Long id, List<String> permissions) {
+        AppUser user = findOrThrow(id);
+        user.setPermissions(permissions != null ? new HashSet<>(permissions) : new HashSet<>());
+        return AppUserResponseDTO.from(userRepository.save(user));
+    }
+
+    // ── Actualizar locales accesibles ────────────────────────────────────────
+
+    @Transactional
+    public AppUserResponseDTO updateStoreAccess(Long id, List<Long> storeIds) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        AppUser user = findOrThrow(id);
+        Set<Store> stores = new HashSet<>();
+        if (storeIds != null) {
+            for (Long sid : storeIds) {
+                // Valida que cada storeId pertenezca al tenant del caller antes de guardar
+                // — PH v2 no hace esta validación porque es single-tenant.
+                stores.add(TenantSecurityUtils.requireStore(sid, tenantId, storeRepository));
+            }
+        }
+        user.setAccessibleStores(stores);
         return AppUserResponseDTO.from(userRepository.save(user));
     }
 
