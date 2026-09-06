@@ -1,4 +1,4 @@
-name: CI — Klaro Backend
+name: CI/CD — Klaro Backend
 
 on:
   push:
@@ -30,7 +30,48 @@ jobs:
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
 
-# Deploy: Railway lo maneja automáticamente desde GitHub
-# develop → Railway DEV service
-# main    → Railway PROD service
-# No se necesita step de deploy aquí.
+  build-and-deploy:
+    name: Build imagen y deploy a Contabo
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Determinar tag de imagen
+        id: vars
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+            echo "compose_dir=/opt/belopia/prod" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=dev-latest" >> "$GITHUB_OUTPUT"
+            echo "compose_dir=/opt/belopia/dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Login Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build y push imagen
+        uses: docker/build-push-action@v5
+        with:
+          context: ./PH
+          push: true
+          tags: adrianpuche/belopia-backend:${{ steps.vars.outputs.tag }}
+
+      - name: Deploy en Contabo (SSH)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd ${{ steps.vars.outputs.compose_dir }}
+            docker compose pull
+            docker compose up -d
+            docker image prune -f
