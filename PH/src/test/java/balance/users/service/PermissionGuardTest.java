@@ -198,14 +198,19 @@ class PermissionGuardTest {
     }
 
     @Test
-    void noAppUserForKeycloakIdInTenant_isDenied() {
+    void noAppUserRowForKeycloakId_hasFullAccess_notDenied() {
+        // Hoy es el caso de TODOS los usuarios reales de Belopia: la migración a
+        // Contabo (SPRINT-08C) partió de un schema vacío, sin datos migrados.
+        // Antes de SPRINT-09 nada autorizaba contra app_users -> negar acá sería
+        // una regresión real para cuentas ya en uso, no una mejora de seguridad.
         TenantContext.setTenantId(TENANT_A);
-        authenticateAs("kc-uuid-desconocido");
-        when(userRepository.findByKeycloakIdAndTenantId("kc-uuid-desconocido", TENANT_A))
+        authenticateAs("kc-uuid-sin-fila-en-app-users");
+        when(userRepository.findByKeycloakIdAndTenantId("kc-uuid-sin-fila-en-app-users", TENANT_A))
                 .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> permissionGuard.assertAccess(PermissionModule.INVENTORY, 1L))
-                .isInstanceOf(AccessDeniedException.class);
+        assertThatCode(() -> permissionGuard.assertAccess(PermissionModule.INVENTORY, 1L))
+                .doesNotThrowAnyException();
+        verifyNoInteractions(storeRepository);
     }
 
     @Test
