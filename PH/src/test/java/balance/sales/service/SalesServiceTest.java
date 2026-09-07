@@ -21,6 +21,7 @@ import balance.service.FormsService;
 import balance.tax.service.TaxService;
 import balance.tenant.context.TenantContext;
 import balance.tenant.service.TenantConfigService;
+import balance.users.service.PermissionGuard;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,6 +30,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -53,6 +55,7 @@ class SalesServiceTest {
     @Mock private FormsService        formsService;
     @Mock private TenantConfigService tenantConfigService;
     @Mock private TaxService          taxService;
+    @Mock private PermissionGuard     permissionGuard;
 
     @BeforeEach
     void setTenantContext() {
@@ -120,6 +123,31 @@ class SalesServiceTest {
         assertThat(result.getSubtotal()).isEqualByComparingTo("200.00");
         assertThat(result.getIsv()).isEqualByComparingTo("0.00");
         assertThat(result.getTotal()).isEqualByComparingTo("200.00");
+    }
+
+    // ── createSale — permiso POS (SPRINT-14/completar módulos) ─────────────────
+
+    @Test
+    void createSale_checksPosPermissionForShiftStore() {
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
+        when(productRepository.findById(1L)).thenReturn(Optional.of(buildProduct(1L, "Pollo", new BigDecimal("100.00"))));
+        when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        salesService.createSale(1L, buildRequest("cajero01", 1L, 1));
+
+        verify(permissionGuard).assertAccess(balance.users.model.PermissionModule.POS, 1L);
+    }
+
+    @Test
+    void createSale_propagatesAccessDeniedFromPermissionGuard() {
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
+        doThrow(new AccessDeniedException("No tenés acceso a este módulo"))
+                .when(permissionGuard).assertAccess(balance.users.model.PermissionModule.POS, 1L);
+
+        assertThatThrownBy(() -> salesService.createSale(1L, buildRequest("cajero01", 1L, 1)))
+                .isInstanceOf(AccessDeniedException.class);
+
+        verify(saleRepository, never()).save(any());
     }
 
     @Test
