@@ -12,6 +12,14 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * SPRINT-14: el gate de {@code @PreAuthorize} acá es deliberadamente amplio
+ * (cualquier cuenta autenticada no-root es "staff" tras el colapso de roles
+ * Keycloak) — la autorización fina (cascada de niveles, canManageUsers) vive
+ * en {@code RoleService.assertCanManage}, llamada desde el service, porque
+ * depende de datos (el Role asignado) que un SpEL de @PreAuthorize no puede
+ * resolver limpiamente. Ver "06. Sistema de Roles y Permisos Personalizables".
+ */
 @RestController
 @RequestMapping("/api/v2/users")
 @CrossOrigin(origins = "*")
@@ -20,8 +28,8 @@ public class AppUserController {
     @Autowired
     private AppUserService userService;
 
-    /** Lista todos los usuarios del tenant. Solo admin y root. */
-    @PreAuthorize("hasAnyRole('root', 'admin')")
+    /** Lista todos los usuarios del tenant. Root, o cualquier Role con canManageUsers=true. */
+    @PreAuthorize("hasAnyRole('root', 'staff')")
     @GetMapping
     public ResponseEntity<List<AppUserResponseDTO>> findAll() {
         return ResponseEntity.ok(userService.findAll());
@@ -37,15 +45,15 @@ public class AppUserController {
         }
     }
 
-    /** Lista usuarios por local. Solo admin y root. */
-    @PreAuthorize("hasAnyRole('root', 'admin')")
+    /** Lista usuarios por local. Root, o cualquier Role con canManageUsers=true. */
+    @PreAuthorize("hasAnyRole('root', 'staff')")
     @GetMapping("/store/{storeId}")
     public ResponseEntity<List<AppUserResponseDTO>> findByStore(@PathVariable Long storeId) {
         return ResponseEntity.ok(userService.findByStore(storeId));
     }
 
-    /** Crea un usuario. Admin puede crear solo USER; root puede crear ADMIN y USER. */
-    @PreAuthorize("hasAnyRole('root', 'admin')")
+    /** Crea un usuario. La cascada de niveles se valida en el service. */
+    @PreAuthorize("hasAnyRole('root', 'staff')")
     @PostMapping
     public ResponseEntity<?> create(@Valid @RequestBody AppUserRequestDTO dto) {
         try {
@@ -57,8 +65,8 @@ public class AppUserController {
         }
     }
 
-    /** Suspende el acceso del usuario. Solo admin y root. */
-    @PreAuthorize("hasAnyRole('root', 'admin')")
+    /** Suspende el acceso del usuario. Cascada de niveles validada en el service. */
+    @PreAuthorize("hasAnyRole('root', 'staff')")
     @PutMapping("/{id}/suspend")
     public ResponseEntity<?> suspend(@PathVariable Long id) {
         try {
@@ -68,8 +76,8 @@ public class AppUserController {
         }
     }
 
-    /** Reactiva el acceso del usuario. Solo admin y root. */
-    @PreAuthorize("hasAnyRole('root', 'admin')")
+    /** Reactiva el acceso del usuario. Cascada de niveles validada en el service. */
+    @PreAuthorize("hasAnyRole('root', 'staff')")
     @PutMapping("/{id}/activate")
     public ResponseEntity<?> activate(@PathVariable Long id) {
         try {
@@ -79,8 +87,8 @@ public class AppUserController {
         }
     }
 
-    /** Reasigna el usuario a otro local. Solo admin y root. */
-    @PreAuthorize("hasAnyRole('root', 'admin')")
+    /** Reasigna el usuario a otro local. Cascada de niveles validada en el service. */
+    @PreAuthorize("hasAnyRole('root', 'staff')")
     @PutMapping("/{id}/reassign")
     public ResponseEntity<?> reassign(@PathVariable Long id, @RequestBody Map<String, Long> body) {
         try {
@@ -92,8 +100,20 @@ public class AppUserController {
         }
     }
 
-    /** Actualiza los módulos habilitados del usuario. Solo admin y root. */
-    @PreAuthorize("hasAnyRole('root', 'admin')")
+    /** Asigna un Role al usuario (SPRINT-14). Reemplaza a /permissions como vía principal. */
+    @PreAuthorize("hasAnyRole('root', 'staff')")
+    @PutMapping("/{id}/role")
+    public ResponseEntity<?> updateRole(@PathVariable Long id, @RequestBody Map<String, Long> body) {
+        try {
+            return ResponseEntity.ok(userService.updateRole(id, body.get("roleId")));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** @deprecated SPRINT-14: usar /role. Se conserva por compatibilidad. */
+    @Deprecated
+    @PreAuthorize("hasAnyRole('root', 'staff')")
     @PutMapping("/{id}/permissions")
     public ResponseEntity<?> updatePermissions(@PathVariable Long id, @RequestBody Map<String, List<String>> body) {
         try {
@@ -103,8 +123,8 @@ public class AppUserController {
         }
     }
 
-    /** Actualiza los locales accesibles del usuario. Solo admin y root. */
-    @PreAuthorize("hasAnyRole('root', 'admin')")
+    /** Actualiza los locales accesibles del usuario. Cascada de niveles validada en el service. */
+    @PreAuthorize("hasAnyRole('root', 'staff')")
     @PutMapping("/{id}/store-access")
     public ResponseEntity<?> updateStoreAccess(@PathVariable Long id, @RequestBody Map<String, List<Long>> body) {
         try {
@@ -114,8 +134,8 @@ public class AppUserController {
         }
     }
 
-    /** Resetea la contraseña del usuario. Solo admin y root. */
-    @PreAuthorize("hasAnyRole('root', 'admin')")
+    /** Resetea la contraseña del usuario. Cascada de niveles validada en el service. */
+    @PreAuthorize("hasAnyRole('root', 'staff')")
     @PutMapping("/{id}/reset-password")
     public ResponseEntity<?> resetPassword(@PathVariable Long id, @RequestBody Map<String, String> body) {
         try {
@@ -130,8 +150,8 @@ public class AppUserController {
         }
     }
 
-    /** Elimina el usuario permanentemente. Solo root. */
-    @PreAuthorize("hasRole('root')")
+    /** Elimina (soft-delete) el usuario. Cascada de niveles validada en el service. */
+    @PreAuthorize("hasAnyRole('root', 'staff')")
     @DeleteMapping("/{id}")
     public ResponseEntity<?> delete(@PathVariable Long id) {
         try {

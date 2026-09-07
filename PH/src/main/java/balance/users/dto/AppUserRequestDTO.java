@@ -23,14 +23,23 @@ public class AppUserRequestDTO {
      * depender solo de {@link #storeIds}. */
     private Long storeId;
 
-    private String role = "user";
+    /** @deprecated SPRINT-14: toda cuenta creada vía este endpoint es "staff" en
+     * Keycloak — la granularidad real la da {@link #roleId}. Campo ignorado. */
+    @Deprecated
+    private String role;
 
-    /** Etiqueta de negocio libre (ej. "ENCARGADO", "CONTADOR", "SOCIO"). Opcional. */
+    /** @deprecated SPRINT-14: reemplazado por {@link #roleId}. Ignorado. */
+    @Deprecated
     private String businessRole;
 
-    /** Módulos habilitados (valores de PermissionModule). Opcional — si se omite,
-     * el usuario queda sin acceso a módulos restringidos hasta que un admin se los asigne. */
+    /** @deprecated SPRINT-14: los módulos vienen del Role ({@link #roleId}), no se
+     * setean sueltos por usuario. Ignorado. */
+    @Deprecated
     private List<String> permissions;
+
+    /** Role a asignar (SPRINT-14) — define qué módulos ve. {@code null} = sin
+     * Role (acceso total) — solo root puede crear así. */
+    private Long roleId;
 
     /** Locales adicionales accesibles (más allá del local principal). Opcional. */
     private List<Long> storeIds;

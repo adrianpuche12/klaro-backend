@@ -23,6 +23,7 @@ import balance.users.model.AppUser;
 import balance.users.repository.AppUserRepository;
 import balance.users.service.AppUserService;
 import balance.users.service.KeycloakAdminService;
+import balance.users.service.RoleService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -67,6 +68,7 @@ class TenantIsolationTest {
     @InjectMocks private AppUserService appUserService;
     @Mock private AppUserRepository     appUserRepository;
     @Mock private KeycloakAdminService  keycloakAdminService;
+    @Mock private RoleService           roleService;
 
     @AfterEach void clearContext() { TenantContext.clear(); }
 
