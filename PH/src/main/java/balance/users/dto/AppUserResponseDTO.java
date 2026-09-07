@@ -22,6 +22,10 @@ public class AppUserResponseDTO {
     private List<String> permissions;
     private Long roleId;
     private String roleName;
+    /** Si este usuario puede crear/gestionar otros usuarios (Role.canManageUsers).
+     * El frontend lo usa para decidir si mostrar el panel de administración,
+     * ya que Keycloak ya no distingue admin/user (SPRINT-14, todos son "staff"). */
+    private boolean canManageUsers;
     private List<Long> accessibleStoreIds;
     private LocalDateTime createdAt;
 
@@ -38,9 +42,10 @@ public class AppUserResponseDTO {
             dto.storeName = u.getStore().getName();
         }
         if (u.getRole() != null) {
-            dto.roleId      = u.getRole().getId();
-            dto.roleName    = u.getRole().getName();
-            dto.permissions = u.getRole().getPermissions().stream().sorted().toList();
+            dto.roleId         = u.getRole().getId();
+            dto.roleName       = u.getRole().getName();
+            dto.canManageUsers = u.getRole().isCanManageUsers();
+            dto.permissions    = u.getRole().getPermissions().stream().sorted().toList();
         } else {
             dto.permissions = u.getPermissions().stream().sorted().toList();
         }
