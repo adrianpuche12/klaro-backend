@@ -7,6 +7,7 @@ import balance.tenant.context.TenantContext;
 import balance.users.dto.AppUserRequestDTO;
 import balance.users.dto.AppUserResponseDTO;
 import balance.users.model.AppUser;
+import balance.users.model.Role;
 import balance.users.repository.AppUserRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,6 +17,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -38,11 +40,15 @@ class AppUserServiceTest {
     @Mock private AppUserRepository    userRepository;
     @Mock private StoreRepository      storeRepository;
     @Mock private KeycloakAdminService keycloakAdmin;
+    @Mock private RoleService          roleService;
 
     @BeforeEach
     void setUp() {
         TenantContext.setTenantId(TENANT_ID);
-        // Simular llamada desde usuario con rol root (cumple con el guard de create())
+        // Simular llamada desde usuario con rol root -- assertCanManage está
+        // mockeado (no-op por defecto en Mockito para métodos void), así que
+        // el rol de Keycloak acá no filtra nada por sí solo; se deja por
+        // consistencia con TenantIsolationTest y otros tests del módulo.
         var auth = new TestingAuthenticationToken(
                 "admin.klaro", null,
                 List.of(new SimpleGrantedAuthority("ROLE_root")));
@@ -66,6 +72,15 @@ class AppUserServiceTest {
         return s;
     }
 
+    private Role buildRole(Long id, String name, int level) {
+        Role r = new Role();
+        r.setId(id);
+        r.setTenantId(TENANT_ID);
+        r.setName(name);
+        r.setLevel(level);
+        return r;
+    }
+
     private AppUser buildUser(Long id, String username, AppUserStatus status) {
         AppUser u = new AppUser();
         u.setUsername(username);
@@ -83,7 +98,6 @@ class AppUserServiceTest {
         dto.setFullName(fullName);
         dto.setPassword("pass123");
         dto.setStoreId(storeId);
-        // role defaults to "user"
         return dto;
     }
 
@@ -145,38 +159,52 @@ class AppUserServiceTest {
         assertThat(captor.getValue().getStatus()).isEqualTo(AppUserStatus.ACTIVE);
     }
 
-    // ── create — restricción de roles ─────────────────────────────────────────
+    // ── create — SPRINT-14: siempre "staff" en Keycloak, cascada vía RoleService ─
 
     @Test
-    void create_adminCannotCreateAdminRole() {
-        // Simular caller como ADMIN (no root)
-        var adminAuth = new TestingAuthenticationToken(
-                "admin.user", null,
-                List.of(new SimpleGrantedAuthority("ROLE_admin")));
-        adminAuth.setAuthenticated(true);
-        SecurityContextHolder.getContext().setAuthentication(adminAuth);
-
-        AppUserRequestDTO dto = buildRequest("otro.admin", "Otro Admin", 1L);
-        dto.setRole("admin");
-
-        assertThatThrownBy(() -> appUserService.create(dto))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Solo root puede crear");
-    }
-
-    @Test
-    void create_rootCanCreateAdminRole() {
-        when(userRepository.existsByUsernameAndTenantId("nuevo.admin", TENANT_ID)).thenReturn(false);
+    void create_alwaysUsesStaffKeycloakRole_regardlessOfRoleId() {
+        Role targetRole = buildRole(5L, "Encargado", 1);
+        when(userRepository.existsByUsernameAndTenantId("carlos", TENANT_ID)).thenReturn(false);
+        when(roleService.findOrThrow(5L, TENANT_ID)).thenReturn(targetRole);
         when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
-        when(keycloakAdmin.createUser(any(), any(), any(), eq("admin"), eq(TENANT_ID))).thenReturn("kc-uuid-admin");
+        when(keycloakAdmin.createUser(any(), any(), any(), any(), any())).thenReturn("kc-uuid-nuevo");
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        AppUserRequestDTO dto = buildRequest("nuevo.admin", "Admin Nuevo", 1L);
-        dto.setRole("admin");
+        AppUserRequestDTO dto = buildRequest("carlos", "Carlos", 1L);
+        dto.setRoleId(5L);
 
         appUserService.create(dto);
 
-        verify(keycloakAdmin).createUser(any(), any(), any(), eq("admin"), eq(TENANT_ID));
+        verify(keycloakAdmin).createUser(any(), any(), any(), eq("staff"), eq(TENANT_ID));
+        verify(roleService).assertCanManage(targetRole);
+    }
+
+    @Test
+    void create_withNullRoleId_callsAssertCanManageWithNull() {
+        when(userRepository.existsByUsernameAndTenantId("cajero01", TENANT_ID)).thenReturn(false);
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
+        when(keycloakAdmin.createUser(any(), any(), any(), any(), any())).thenReturn("kc-uuid-nuevo");
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        appUserService.create(buildRequest("cajero01", "Cajero", 1L));
+
+        verify(roleService).assertCanManage(null);
+    }
+
+    @Test
+    void create_propagatesAccessDeniedFromRoleService() {
+        Role targetRole = buildRole(5L, "Encargado", 1);
+        when(roleService.findOrThrow(5L, TENANT_ID)).thenReturn(targetRole);
+        doThrow(new AccessDeniedException("No podés crear o gestionar un usuario de tu mismo nivel o superior"))
+                .when(roleService).assertCanManage(targetRole);
+
+        AppUserRequestDTO dto = buildRequest("carlos", "Carlos", 1L);
+        dto.setRoleId(5L);
+
+        assertThatThrownBy(() -> appUserService.create(dto))
+                .isInstanceOf(AccessDeniedException.class);
+
+        verifyNoInteractions(keycloakAdmin);
     }
 
     // ── create — validaciones ─────────────────────────────────────────────────
@@ -247,6 +275,16 @@ class AppUserServiceTest {
                 .hasMessageContaining("Usuario no encontrado");
     }
 
+    @Test
+    void suspend_propagatesAccessDeniedFromRoleService() {
+        AppUser user = buildUser(1L, "cajero01", AppUserStatus.ACTIVE);
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
+        doThrow(new AccessDeniedException("denegado")).when(roleService).assertCanManage(user.getRole());
+
+        assertThatThrownBy(() -> appUserService.suspend(1L)).isInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(keycloakAdmin);
+    }
+
     // ── activate ──────────────────────────────────────────────────────────────
 
     @Test
@@ -308,28 +346,60 @@ class AppUserServiceTest {
                 .hasMessageContaining("Local no encontrado");
     }
 
-    // ── delete ────────────────────────────────────────────────────────────────
+    // ── delete (soft-delete, SPRINT-14) ──────────────────────────────────────
 
     @Test
-    void delete_removesUserFromKeycloakAndDatabase() {
+    void delete_setsStatusToDeleted_neverRemovesRow() {
         AppUser user = buildUser(1L, "cajero01", AppUserStatus.ACTIVE);
         when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         appUserService.delete(1L);
 
-        verify(keycloakAdmin).deleteUser("kc-uuid-1");
-        verify(userRepository).delete(user);
+        assertThat(user.getStatus()).isEqualTo(AppUserStatus.DELETED);
+        verify(userRepository, never()).delete(any());
+        verify(userRepository).save(user);
     }
 
     @Test
-    void delete_callsKeycloakBeforeDatabase() {
+    void delete_disablesUserInKeycloak() {
         AppUser user = buildUser(1L, "cajero01", AppUserStatus.ACTIVE);
         when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        var inOrder = inOrder(keycloakAdmin, userRepository);
         appUserService.delete(1L);
-        inOrder.verify(keycloakAdmin).deleteUser("kc-uuid-1");
-        inOrder.verify(userRepository).delete(user);
+
+        verify(keycloakAdmin).setUserEnabled("kc-uuid-1", false);
+    }
+
+    @Test
+    void delete_propagatesAccessDeniedFromRoleService() {
+        AppUser user = buildUser(1L, "cajero01", AppUserStatus.ACTIVE);
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
+        doThrow(new AccessDeniedException("denegado")).when(roleService).assertCanManage(user.getRole());
+
+        assertThatThrownBy(() -> appUserService.delete(1L)).isInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(keycloakAdmin);
+        verify(userRepository, never()).save(any());
+    }
+
+    // ── findAll / findByStore — gate de lectura (SPRINT-14) ──────────────────
+
+    @Test
+    void findAll_callsAssertCanManageUsers() {
+        when(userRepository.findByTenantIdOrderByFullNameAsc(TENANT_ID)).thenReturn(List.of());
+
+        appUserService.findAll();
+
+        verify(roleService).assertCanManageUsers();
+    }
+
+    @Test
+    void findAll_propagatesAccessDeniedFromRoleService() {
+        doThrow(new AccessDeniedException("denegado")).when(roleService).assertCanManageUsers();
+
+        assertThatThrownBy(() -> appUserService.findAll()).isInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(userRepository);
     }
 
     // ── findByUsername ────────────────────────────────────────────────────────
@@ -353,7 +423,7 @@ class AppUserServiceTest {
                 .hasMessageContaining("Usuario no encontrado");
     }
 
-    // ── create — perfil acotado (SPRINT-09) ──────────────────────────────────
+    // ── create — perfil acotado (SPRINT-09/14) ───────────────────────────────
 
     @Test
     void create_allowsNullStoreId_forRestrictedProfile() {
@@ -362,7 +432,6 @@ class AppUserServiceTest {
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         AppUserRequestDTO dto = buildRequest("contador01", "Contador Uno", null);
-        dto.setBusinessRole("CONTADOR");
 
         AppUserResponseDTO result = appUserService.create(dto);
 
@@ -371,24 +440,24 @@ class AppUserServiceTest {
     }
 
     @Test
-    void create_savesBusinessRoleAndPermissionsAndAccessibleStores() {
+    void create_savesRoleAndAccessibleStores() {
+        Role contadorRole = buildRole(9L, "Contador", 1);
         when(userRepository.existsByUsernameAndTenantId("contador01", TENANT_ID)).thenReturn(false);
+        when(roleService.findOrThrow(9L, TENANT_ID)).thenReturn(contadorRole);
         when(storeRepository.findByIdAndTenantId(2L, TENANT_ID)).thenReturn(Optional.of(buildStore(2L, "El Paraiso")));
         when(storeRepository.findByIdAndTenantId(3L, TENANT_ID)).thenReturn(Optional.of(buildStore(3L, "Danli 2")));
         when(keycloakAdmin.createUser(any(), any(), any(), any(), any())).thenReturn("kc-uuid-nuevo");
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         AppUserRequestDTO dto = buildRequest("contador01", "Contador Uno", null);
-        dto.setBusinessRole("CONTADOR");
-        dto.setPermissions(List.of("DASHBOARD", "SALES_HISTORY"));
+        dto.setRoleId(9L);
         dto.setStoreIds(List.of(2L, 3L));
 
         ArgumentCaptor<AppUser> captor = ArgumentCaptor.forClass(AppUser.class);
         appUserService.create(dto);
         verify(userRepository).save(captor.capture());
 
-        assertThat(captor.getValue().getBusinessRole()).isEqualTo("CONTADOR");
-        assertThat(captor.getValue().getPermissions()).containsExactlyInAnyOrder("DASHBOARD", "SALES_HISTORY");
+        assertThat(captor.getValue().getRole()).isEqualTo(contadorRole);
         assertThat(captor.getValue().getAccessibleStores()).extracting("id").containsExactlyInAnyOrder(2L, 3L);
     }
 
@@ -406,7 +475,35 @@ class AppUserServiceTest {
         verifyNoInteractions(keycloakAdmin);
     }
 
-    // ── updatePermissions ─────────────────────────────────────────────────────
+    // ── updateRole (SPRINT-14) ───────────────────────────────────────────────
+
+    @Test
+    void updateRole_assignsRoleAfterCascadeCheck() {
+        AppUser user = buildUser(1L, "cajero01", AppUserStatus.ACTIVE);
+        Role role = buildRole(9L, "Contador", 1);
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
+        when(roleService.findOrThrow(9L, TENANT_ID)).thenReturn(role);
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        appUserService.updateRole(1L, 9L);
+
+        verify(roleService).assertCanManage(role);
+        assertThat(user.getRole()).isEqualTo(role);
+    }
+
+    @Test
+    void updateRole_propagatesAccessDeniedFromRoleService() {
+        AppUser user = buildUser(1L, "cajero01", AppUserStatus.ACTIVE);
+        Role role = buildRole(9L, "Contador", 1);
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
+        when(roleService.findOrThrow(9L, TENANT_ID)).thenReturn(role);
+        doThrow(new AccessDeniedException("denegado")).when(roleService).assertCanManage(role);
+
+        assertThatThrownBy(() -> appUserService.updateRole(1L, 9L)).isInstanceOf(AccessDeniedException.class);
+        verify(userRepository, never()).save(any());
+    }
+
+    // ── updatePermissions (deprecado, SPRINT-09) ─────────────────────────────
 
     @Test
     void updatePermissions_replacesPermissionSet() {

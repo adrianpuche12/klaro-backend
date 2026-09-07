@@ -5,6 +5,7 @@ import balance.repository.StoreRepository;
 import balance.tenant.context.TenantSecurityUtils;
 import balance.users.model.AppUser;
 import balance.users.model.PermissionModule;
+import balance.users.model.Role;
 import balance.users.repository.AppUserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
@@ -14,6 +15,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Guard de acceso granular server-side. PH v2 no tiene ningún equivalente
@@ -49,7 +51,7 @@ public class PermissionGuard {
             return;
         }
 
-        if (!user.get().getPermissions().contains(module.name())) {
+        if (!effectivePermissions(user.get()).contains(module.name())) {
             throw new AccessDeniedException("No tenés acceso a este módulo");
         }
     }
@@ -88,9 +90,18 @@ public class PermissionGuard {
             throw new AccessDeniedException("No tenés acceso a este local");
         }
 
-        if (!user.getPermissions().contains(module.name())) {
+        if (!effectivePermissions(user).contains(module.name())) {
             throw new AccessDeniedException("No tenés acceso a este módulo");
         }
+    }
+
+    /** SPRINT-14: el Role es la fuente de verdad de permisos si está asignado.
+     * {@link AppUser#getPermissions()} (SPRINT-09) queda como fallback deprecado
+     * para usuarios que todavía no tengan Role (no debería pasar tras la
+     * migración V5, pero no se asume). */
+    private Set<String> effectivePermissions(AppUser user) {
+        Role role = user.getRole();
+        return role != null ? role.getPermissions() : user.getPermissions();
     }
 
     /**
@@ -100,15 +111,17 @@ public class PermissionGuard {
      *     (SPRINT-08C) partió de un schema vacío, sin datos migrados; antes de
      *     SPRINT-09 nada validaba contra app_users para autorizar, así que negar
      *     acceso acá sería una regresión real, no una mejora de seguridad; o
-     * (b) tiene fila pero fue creada antes de SPRINT-09 — sin businessRole ni
-     *     ninguna fila en permissions/accessibleStores.
+     * (b) tiene fila pero no tiene Role asignado (SPRINT-14) ni datos del
+     *     modelo viejo de SPRINT-09 (businessRole/permissions) — nunca tuvo
+     *     perfil acotado, sigue con acceso total.
      */
     private boolean isLegacy(Optional<AppUser> maybeUser) {
         if (maybeUser.isEmpty()) {
             return true;
         }
         AppUser user = maybeUser.get();
-        return user.getBusinessRole() == null
+        return user.getRole() == null
+                && user.getBusinessRole() == null
                 && user.getPermissions().isEmpty()
                 && user.getAccessibleStores().isEmpty();
     }

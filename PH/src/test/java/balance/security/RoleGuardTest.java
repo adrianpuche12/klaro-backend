@@ -249,7 +249,13 @@ class RoleGuardTest {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // AppUserController — DELETE solo root, CRUD admin+
+    // AppUserController — SPRINT-14: Keycloak colapsó admin/user -> "staff".
+    // El @PreAuthorize acá es un gate grueso (root o staff, cualquiera de los
+    // dos entra al controller); la cascada real de niveles (¿este staff en
+    // particular puede gestionar usuarios?) vive en RoleService.assertCanManage/
+    // assertCanManageUsers, que se llama DENTRO de AppUserService — mockeado acá,
+    // así que esa parte fina se prueba en RoleServiceTest y AppUserServiceTest,
+    // no en este slice de WebMvcTest.
     // ═══════════════════════════════════════════════════════════════════════
 
     @Nested
@@ -261,16 +267,18 @@ class RoleGuardTest {
         @MockBean  AppUserService userService;
         @MockBean  JwtDecoder jwtDecoder;
 
-        @Test void getAll_deniesUser() throws Exception {
+        @Test void getAll_deniesUnrecognizedRole() throws Exception {
+            // Ninguna cuenta real emite esta autoridad -- confirma que el gate
+            // no es "cualquiera autenticado", sigue siendo root/staff únicamente.
             mockMvc.perform(get("/api/v2/users")
-                    .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_user"))))
+                    .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_invitado"))))
                     .andExpect(status().isForbidden());
         }
 
-        @Test void getAll_allowsAdmin() throws Exception {
+        @Test void getAll_allowsStaff() throws Exception {
             when(userService.findAll()).thenReturn(List.of());
             mockMvc.perform(get("/api/v2/users")
-                    .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_admin"))))
+                    .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_staff"))))
                     .andExpect(status().isOk());
         }
 
@@ -281,27 +289,30 @@ class RoleGuardTest {
                     .andExpect(status().isOk());
         }
 
-        @Test void getByUsername_allowsAllRoles() throws Exception {
+        @Test void getByUsername_allowsAllRecognizedRoles() throws Exception {
             when(userService.findByUsername("cajero01"))
                     .thenThrow(new IllegalArgumentException("no encontrado"));
             // 404 esperado (usuario no existe en mock) pero NO 401/403
-            for (String role : new String[]{"user", "admin", "root"}) {
+            for (String role : new String[]{"staff", "root"}) {
                 mockMvc.perform(get("/api/v2/users/by-username/cajero01")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_" + role))))
                         .andExpect(status().isNotFound());
             }
         }
 
-        @Test void delete_deniesAdmin() throws Exception {
+        @Test void delete_deniesUnrecognizedRole() throws Exception {
             mockMvc.perform(delete("/api/v2/users/1")
-                    .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_admin"))))
+                    .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_invitado"))))
                     .andExpect(status().isForbidden());
         }
 
-        @Test void delete_deniesUser() throws Exception {
+        @Test void delete_allowsStaff() throws Exception {
+            // Gate grueso del controller únicamente -- la cascada real
+            // (¿puede este staff eliminar a ESTE usuario puntual?) la valida
+            // RoleService.assertCanManage dentro del service, mockeado acá.
             mockMvc.perform(delete("/api/v2/users/1")
-                    .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_user"))))
-                    .andExpect(status().isForbidden());
+                    .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_staff"))))
+                    .andExpect(status().isNoContent());
         }
 
         @Test void delete_allowsRoot() throws Exception {
