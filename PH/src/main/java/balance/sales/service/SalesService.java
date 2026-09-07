@@ -19,6 +19,8 @@ import balance.service.FormsService;
 import balance.tax.service.TaxService;
 import balance.tenant.context.TenantSecurityUtils;
 import balance.tenant.service.TenantConfigService;
+import balance.users.model.PermissionModule;
+import balance.users.service.PermissionGuard;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,6 +48,7 @@ public class SalesService {
     @Autowired private FormsService formsService;
     @Autowired private TenantConfigService tenantConfigService;
     @Autowired private TaxService taxService;
+    @Autowired private PermissionGuard permissionGuard;
 
     @Transactional
     public SaleResponseDTO createSale(Long shiftId, SaleRequestDTO request) {
@@ -59,6 +62,7 @@ public class SalesService {
         }
 
         Store store = shift.getStore();
+        permissionGuard.assertAccess(PermissionModule.POS, store.getId());
 
         Sale sale = new Sale();
         sale.setShift(shift);
