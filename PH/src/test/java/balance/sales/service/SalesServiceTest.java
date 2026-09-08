@@ -237,11 +237,11 @@ class SalesServiceTest {
 
         salesService.createSale(1L, req);
 
-        verify(inventoryService, times(2)).adjustSilent(eq(1L), any(StockAdjustmentDTO.class));
+        verify(inventoryService, times(2)).adjust(eq(1L), any(StockAdjustmentDTO.class));
     }
 
     @Test
-    void createSale_adjustSilentUsesTipoSalida() {
+    void createSale_adjustUsesTipoSalida() {
         when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
         when(productRepository.findById(1L)).thenReturn(Optional.of(buildProduct(1L, "Pollo", new BigDecimal("100.00"))));
         when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -249,9 +249,22 @@ class SalesServiceTest {
 
         salesService.createSale(1L, buildRequest("cajero", 1L, 3));
 
-        verify(inventoryService).adjustSilent(eq(1L), captor.capture());
+        verify(inventoryService).adjust(eq(1L), captor.capture());
         assertThat(captor.getValue().getType()).isEqualTo("SALIDA");
         assertThat(captor.getValue().getQuantity()).isEqualTo(3);
+    }
+
+    @Test
+    void createSale_throwsAndRollsBackWhenStockInsufficient() {
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
+        when(productRepository.findById(1L)).thenReturn(Optional.of(buildProduct(1L, "Pollo", new BigDecimal("100.00"))));
+        when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        doThrow(new IllegalArgumentException("Stock insuficiente para realizar la salida"))
+                .when(inventoryService).adjust(eq(1L), any(StockAdjustmentDTO.class));
+
+        assertThatThrownBy(() -> salesService.createSale(1L, buildRequest("cajero", 1L, 999)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Stock insuficiente");
     }
 
     // ── cancelSale ────────────────────────────────────────────────────────────

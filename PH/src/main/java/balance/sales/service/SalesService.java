@@ -277,22 +277,22 @@ public class SalesService {
                 sales.size(), totalSubtotal, totalIsv, totalAmount, totalCash, totalCard, summary);
     }
 
+    /** No usa adjustSilent a propósito: si no hay stock suficiente, la venta
+     * entera debe abortar (rollback de @Transactional) en vez de cobrarse con
+     * el inventario sin descontar -- encontrado en testing E2E vendiendo más
+     * cantidad de la disponible: la venta se registraba completa y el stock
+     * quedaba sin tocar, sin ningún error visible. */
     private void deductStock(Long storeId, List<SaleItem> items, String username) {
         for (SaleItem item : items) {
             if (item.getProduct() == null) continue;
-            try {
-                StockAdjustmentDTO adj = new StockAdjustmentDTO();
-                adj.setProductId(item.getProduct().getId());
-                adj.setType("SALIDA");
-                adj.setQuantity(item.getQuantity());
-                adj.setReason("Venta");
-                adj.setUsername(username);
-                adj.setSource("SALE");
-                inventoryService.adjustSilent(storeId, adj);
-            } catch (Exception ex) {
-                log.warn("No se pudo descontar stock del producto {} en local {}: {}",
-                        item.getProduct().getId(), storeId, ex.getMessage());
-            }
+            StockAdjustmentDTO adj = new StockAdjustmentDTO();
+            adj.setProductId(item.getProduct().getId());
+            adj.setType("SALIDA");
+            adj.setQuantity(item.getQuantity());
+            adj.setReason("Venta");
+            adj.setUsername(username);
+            adj.setSource("SALE");
+            inventoryService.adjust(storeId, adj);
         }
     }
 
