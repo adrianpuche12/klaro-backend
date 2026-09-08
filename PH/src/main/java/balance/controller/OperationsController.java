@@ -6,6 +6,8 @@ import balance.model.SupplierPayment;
 import balance.model.SalaryPayment;
 import balance.model.Store;
 import balance.service.FormsService;
+import balance.users.model.PermissionModule;
+import balance.users.service.PermissionGuard;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -22,12 +24,22 @@ import java.util.List;
 import balance.model.GastoAdmin;
 
 
+/** Vista agregada de depósitos/gastos/pagos, la misma familia de datos que
+ * FormsController -- reachable solo desde la pantalla "Operaciones" (ver
+ * Sidebar.tsx), gateada por OPERATIONS. */
 @RestController
 @RequestMapping("/api/operations")
 public class OperationsController {
 
     @Autowired
     private FormsService formsService;
+
+    @Autowired
+    private PermissionGuard permissionGuard;
+
+    private void assertOperationsAccess() {
+        permissionGuard.assertAccess(PermissionModule.OPERATIONS);
+    }
 
     /**
      * Obtiene todas las operaciones del sistema.
@@ -46,6 +58,7 @@ public class OperationsController {
             @RequestParam(required = false) Long storeId,
             @RequestParam(defaultValue = "0")  int page,
             @RequestParam(defaultValue = "50") int size) {
+        assertOperationsAccess();
 
         List<AllOperationsDTO> result;
 
@@ -71,6 +84,7 @@ public class OperationsController {
             @RequestParam String username,
             @RequestParam(defaultValue = "0")  int page,
             @RequestParam(defaultValue = "20") int size) {
+        assertOperationsAccess();
         List<AllOperationsDTO> result = formsService.getOperationsByUsername(username);
         int from = page * size;
         if (from >= result.size()) return ResponseEntity.ok(List.of());
@@ -102,6 +116,7 @@ public class OperationsController {
             @PathVariable String type,
             @PathVariable Long id,
             @RequestBody AllOperationsDTO dto) {
+        assertOperationsAccess();
         switch (type.toUpperCase()) {
             case "GASTO_ADMIN":
                 GastoAdmin gastoAdmin = new GastoAdmin();
@@ -206,6 +221,7 @@ public class OperationsController {
     public ResponseEntity<Void> deleteOperation(
             @PathVariable String type,
             @PathVariable Long id) {
+        assertOperationsAccess();
         switch (type.toUpperCase()) {
             case "GASTO_ADMIN":
                 formsService.deleteGastoAdmin(id);
