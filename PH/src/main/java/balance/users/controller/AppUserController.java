@@ -6,6 +6,7 @@ import balance.users.service.AppUserService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -60,6 +61,11 @@ public class AppUserController {
             return ResponseEntity.ok(userService.create(dto));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (AccessDeniedException e) {
+            // Dejar que Spring Security la traduzca a 403 -- atraparla acá como
+            // Exception genérica la enmascaraba como 500 (bug encontrado en
+            // testing E2E: violar la cascada de niveles daba 500, no 403).
+            throw e;
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(Map.of("error", "Error al crear usuario: " + e.getMessage()));
         }

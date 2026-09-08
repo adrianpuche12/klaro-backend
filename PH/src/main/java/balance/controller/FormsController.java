@@ -2,6 +2,8 @@ package balance.controller;
 
 import balance.model.*;
 import balance.service.FormsService;
+import balance.users.model.PermissionModule;
+import balance.users.service.PermissionGuard;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -13,14 +15,24 @@ import balance.model.GastoAdmin;
 import java.time.LocalDate;
 import java.util.List;
 
-/** Endpoints para la gestión de depósitos de cierres, pagos a proveedores y salarios. */
+/** Endpoints para la gestión de depósitos de cierres, pagos a proveedores y salarios.
+ * Todos ellos se envían desde la misma pantalla "Operaciones" (DynamicFormScreen,
+ * ver Sidebar.tsx) -- gateados por el módulo OPERATIONS, único que controla el
+ * acceso a esa pantalla en el frontend. */
 
 @RestController
 @RequestMapping("/api/forms")
 public class FormsController {
-    
+
     @Autowired
     private FormsService formsService;
+
+    @Autowired
+    private PermissionGuard permissionGuard;
+
+    private void assertOperationsAccess() {
+        permissionGuard.assertAccess(PermissionModule.OPERATIONS);
+    }
 
     /**
      * Crea un nuevo depósito de cierre.
@@ -40,6 +52,7 @@ public class FormsController {
     @PostMapping("/closing-deposits")
     public ResponseEntity<ClosingDeposit> addClosingDeposit(
             @Valid @RequestBody ClosingDeposit deposit) {
+        assertOperationsAccess();
         return ResponseEntity.ok(formsService.saveClosingDeposit(deposit));
     }
 
@@ -50,11 +63,13 @@ public class FormsController {
      */
     @GetMapping("/closing-deposits/all")
     public ResponseEntity<List<ClosingDeposit>> getAllClosingDeposits() {
+        assertOperationsAccess();
         return ResponseEntity.ok(formsService.getAllClosingDeposits());
     }
     @PostMapping("/gasto-admin")
     public ResponseEntity<GastoAdminResponseDTO> addGastoAdmin(
             @Valid @RequestBody GastoAdminRequestDTO request) {
+        assertOperationsAccess();
         return ResponseEntity.ok(formsService.saveGastoAdmin(request));
     }
 
@@ -62,6 +77,7 @@ public class FormsController {
     public ResponseEntity<GastoAdminResponseDTO> updateGastoAdmin(
             @PathVariable Long id,
             @Valid @RequestBody GastoAdminRequestDTO request) {
+        assertOperationsAccess();
         return ResponseEntity.ok(formsService.updateGastoAdminV2(id, request));
     }
 
@@ -72,6 +88,7 @@ public class FormsController {
      */
     @GetMapping("/gasto-admin/all")
     public ResponseEntity<List<GastoAdmin>> getAllGastosAdmin() {
+        assertOperationsAccess();
         return ResponseEntity.ok(formsService.getAllGastosAdmin());
     }
 
@@ -86,6 +103,7 @@ public class FormsController {
     public ResponseEntity<List<GastoAdmin>> getGastosAdmin(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        assertOperationsAccess();
         return ResponseEntity.ok(formsService.getGastosAdmin(startDate, endDate));
     }
 
@@ -94,11 +112,13 @@ public class FormsController {
     public ResponseEntity<List<ClosingDeposit>> getClosingDeposits(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        assertOperationsAccess();
         return ResponseEntity.ok(formsService.getClosingDeposits(startDate, endDate));
     }
 
     @GetMapping("/closing-deposits/store/{storeId}")
     public ResponseEntity<List<ClosingDeposit>> getByStoreId(@PathVariable Long storeId) {
+        assertOperationsAccess();
         return ResponseEntity.ok(formsService.findByStoreId(storeId));
     }
 
@@ -119,6 +139,7 @@ public class FormsController {
     @PostMapping("/supplier-payments")
     public ResponseEntity<SupplierPayment> addSupplierPayment(
             @Valid @RequestBody SupplierPayment payment) {
+        assertOperationsAccess();
         return ResponseEntity.ok(formsService.saveSupplierPayment(payment));
     }
 
@@ -129,6 +150,7 @@ public class FormsController {
      */
     @GetMapping("/supplier-payments/all")
     public ResponseEntity<List<SupplierPayment>> getAllSupplierPayments() {
+        assertOperationsAccess();
         return ResponseEntity.ok(formsService.getAllSupplierPayments());
     }
 
@@ -143,6 +165,7 @@ public class FormsController {
     public ResponseEntity<List<SupplierPayment>> getSupplierPayments(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        assertOperationsAccess();
         return ResponseEntity.ok(formsService.getSupplierPayments(startDate, endDate));
     }
 
@@ -162,6 +185,7 @@ public class FormsController {
     @PostMapping("/salary-payments")
     public ResponseEntity<SalaryPayment> addSalaryPayment(
             @Valid @RequestBody SalaryPayment payment) {
+        assertOperationsAccess();
         return ResponseEntity.ok(formsService.saveSalaryPayment(payment));
     }
 
@@ -172,6 +196,7 @@ public class FormsController {
      */
     @GetMapping("/salary-payments")
     public ResponseEntity<List<SalaryPayment>> getAllSalaryPayments() {
+        assertOperationsAccess();
         return ResponseEntity.ok(formsService.getAllSalaryPayments());
     }
 

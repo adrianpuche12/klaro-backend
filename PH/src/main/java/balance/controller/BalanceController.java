@@ -2,6 +2,8 @@ package balance.controller;
 
 import balance.model.Transaction;
 import balance.service.BalanceService;
+import balance.users.model.PermissionModule;
+import balance.users.service.PermissionGuard;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -22,9 +24,20 @@ public class BalanceController {
     @Autowired
     private BalanceService balanceService;
 
+    @Autowired
+    private PermissionGuard permissionGuard;
+
+    /** "Finanzas" es una sola pantalla que cubre estos 3 módulos (ver Sidebar.tsx) --
+     * alcanza con tener cualquiera de los tres marcado en el Role. */
+    private void assertFinanceAccess() {
+        permissionGuard.assertAccessAny(
+                PermissionModule.TRANSACTIONS, PermissionModule.SALARY_PAYMENTS, PermissionModule.SUPPLIER_PAYMENTS);
+    }
+
     // Método para agregar una nueva transacción
     @PostMapping
     public ResponseEntity<?> addTransaction(@Valid @RequestBody Transaction transaction, BindingResult result) {
+        assertFinanceAccess();
         // Verificar si hay errores de validación
         if (result.hasErrors()) {
             // Construir una respuesta con los errores
@@ -52,6 +65,7 @@ public class BalanceController {
     public ResponseEntity<BigDecimal> getBalance(
             @RequestParam LocalDate startDate,
             @RequestParam LocalDate endDate) {
+        assertFinanceAccess();
         BigDecimal balance = balanceService.calculateBalance(startDate, endDate);
         return ResponseEntity.ok(balance);
     }
@@ -59,6 +73,7 @@ public class BalanceController {
     // Método para obtener todas las transacciones
     @GetMapping
     public ResponseEntity<List<Transaction>> getAllTransactions() {
+        assertFinanceAccess();
         List<Transaction> transactions = balanceService.getAllTransactions();
         return ResponseEntity.ok(transactions);
     }
@@ -68,6 +83,7 @@ public class BalanceController {
     public ResponseEntity<Transaction> updateTransaction(
             @PathVariable Long id,
             @RequestBody Transaction transaction) {
+        assertFinanceAccess();
         Optional<Transaction> existingTransaction = balanceService.getTransactionById(id);
         if (existingTransaction.isPresent()) {
             Transaction updatedTransaction = existingTransaction.get();
@@ -90,6 +106,7 @@ public class BalanceController {
     // Método para eliminar una transacción por ID
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTransaction(@PathVariable Long id) {
+        assertFinanceAccess();
         if (balanceService.deleteTransaction(id)) {
             return ResponseEntity.noContent().build();
         } else {

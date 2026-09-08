@@ -14,6 +14,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 
+import java.util.Arrays;
 import java.util.Optional;
 import java.util.Set;
 
@@ -52,6 +53,28 @@ public class PermissionGuard {
         }
 
         if (!effectivePermissions(user.get()).contains(module.name())) {
+            throw new AccessDeniedException("No tenés acceso a este módulo");
+        }
+    }
+
+    /**
+     * Igual que {@link #assertAccess(PermissionModule)} pero para una pantalla
+     * que en la práctica agrupa más de un módulo del catálogo (ej. "Finanzas"
+     * cubre TRANSACTIONS+SALARY_PAYMENTS+SUPPLIER_PAYMENTS en una sola pantalla
+     * -- ver Sidebar.tsx). Alcanza con tener cualquiera de los módulos listados.
+     */
+    public void assertAccessAny(PermissionModule... modules) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        String keycloakId = currentKeycloakId();
+
+        Optional<AppUser> user = userRepository.findByKeycloakIdAndTenantId(keycloakId, tenantId);
+        if (isLegacy(user)) {
+            return;
+        }
+
+        Set<String> granted = effectivePermissions(user.get());
+        boolean allowed = Arrays.stream(modules).anyMatch(m -> granted.contains(m.name()));
+        if (!allowed) {
             throw new AccessDeniedException("No tenés acceso a este módulo");
         }
     }
