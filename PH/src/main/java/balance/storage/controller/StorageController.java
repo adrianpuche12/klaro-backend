@@ -1,7 +1,6 @@
 package balance.storage.controller;
 
 import balance.storage.service.R2StorageService;
-import balance.tenant.context.TenantSecurityUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -25,7 +24,7 @@ public class StorageController {
      * Content-Type: multipart/form-data
      * Body: file (imagen)
      *
-     * Response: { "url": "https://pub-xxx.r2.dev/comprobantes/IMG_123.jpg" }
+     * Response: { "url": "https://pub-xxx.r2.dev/prod/mi-tenant/comprobantes/IMG_123.jpg" }
      */
     @PostMapping("/comprobante")
     public ResponseEntity<?> uploadComprobante(@RequestParam("file") MultipartFile file) {
@@ -38,11 +37,8 @@ public class StorageController {
             return ResponseEntity.badRequest().body(Map.of("error", "Solo se permiten imágenes"));
         }
 
-        Long tenantId = TenantSecurityUtils.requireTenantId();
-        String folder = "comprobantes/tenant_" + tenantId;
-
         try {
-            String url = r2.upload(file, folder);
+            String url = r2.upload(file, "comprobantes");
             return ResponseEntity.ok(Map.of("url", url));
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
