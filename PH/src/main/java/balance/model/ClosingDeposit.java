@@ -1,5 +1,6 @@
 package balance.model;
 
+import balance.deposit.model.BankDeposit;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.Getter;
@@ -51,4 +52,9 @@ public class ClosingDeposit {
     @ManyToOne
     @JoinColumn(name = "store_id", nullable = false)
     private Store store;
+
+    /** SPRINT-11: null mientras el cierre está pendiente de agrupar en un depósito. */
+    @ManyToOne
+    @JoinColumn(name = "bank_deposit_id")
+    private BankDeposit bankDeposit;
 }
