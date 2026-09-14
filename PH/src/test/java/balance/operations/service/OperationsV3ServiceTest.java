@@ -1,6 +1,8 @@
 package balance.operations.service;
 
 import balance.common.enums.SaleStatus;
+import balance.deposit.model.BankDeposit;
+import balance.deposit.repository.BankDepositRepository;
 import balance.model.ClosingDeposit;
 import balance.model.GastoAdmin;
 import balance.model.SalaryPayment;
@@ -52,6 +54,7 @@ class OperationsV3ServiceTest {
     @Mock private GastoAdminRepository      gastoAdminRepository;
     @Mock private TransactionRepository     transactionRepository;
     @Mock private StoreRepository           storeRepository;
+    @Mock private BankDepositRepository     bankDepositRepository;
 
     @BeforeEach void setTenant()   { TenantContext.setTenantId(TENANT_ID); }
     @AfterEach  void clearTenant() { TenantContext.clear(); }
@@ -82,6 +85,7 @@ class OperationsV3ServiceTest {
         lenient().when(salaryPaymentRepository.findByTenantIdAndDateRange(any(), any(), any())).thenReturn(List.of());
         lenient().when(gastoAdminRepository.findByTenantIdAndDateRange(any(), any(), any())).thenReturn(List.of());
         lenient().when(transactionRepository.findByTenantIdAndDateRange(any(), any(), any())).thenReturn(List.of());
+        lenient().when(bankDepositRepository.findByTenantIdAndDateRange(any(), any(), any())).thenReturn(List.of());
         // Una sola query batch para ventas (reemplaza el N+1 por store)
         lenient().when(saleRepository.findByTenantIdAndDateRangeStrict(eq(TENANT_ID), any(), any()))
                 .thenReturn(List.of());
@@ -166,6 +170,8 @@ class OperationsV3ServiceTest {
                 .thenReturn(List.of());
         when(gastoAdminRepository.findByTenantIdAndDateRange(eq(TENANT_ID), any(), any()))
                 .thenReturn(List.of());
+        when(bankDepositRepository.findByStoreIdAndTenantIdAndDateRange(eq(STORE_ID), eq(TENANT_ID), any(), any()))
+                .thenReturn(List.of());
 
         List<OperationDTO> result = operationsService.getOperations(FROM, TO, null, STORE_ID, "DATE_DESC", 0, 20);
 
@@ -242,5 +248,61 @@ class OperationsV3ServiceTest {
         OperationSummaryDTO summary = operationsService.getSummary(FROM, TO, null);
 
         assertThat(summary.getTotalOperations()).isEqualTo(1);
+    }
+
+    // ── BANK_DEPOSIT (SPRINT-11) ─────────────────────────────────────────────
+
+    private BankDeposit buildBankDeposit(Long id, BigDecimal declaredAmount) {
+        BankDeposit b = new BankDeposit();
+        b.setId(id);
+        b.setTenantId(TENANT_ID);
+        b.setStore(buildStore(STORE_ID));
+        b.setDepositDate(LocalDate.of(2026, 5, 21));
+        b.setDeclaredAmount(declaredAmount);
+        b.setUsername("gimena_alba");
+        return b;
+    }
+
+    @Test
+    void getOperations_returnsBankDeposits_whenBankDepositsExist() {
+        stubEmptyRepos();
+        BankDeposit deposit = buildBankDeposit(1L, new BigDecimal("3190.00"));
+        when(bankDepositRepository.findByTenantIdAndDateRange(eq(TENANT_ID), any(), any()))
+                .thenReturn(List.of(deposit));
+
+        List<OperationDTO> result = operationsService.getOperations(FROM, TO, null, null, "DATE_DESC", 0, 20);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getType()).isEqualTo("BANK_DEPOSIT");
+        assertThat(result.get(0).getAmount()).isEqualByComparingTo("3190.00");
+    }
+
+    @Test
+    void getOperations_filterByBankDepositType_doesNotQuerySales() {
+        when(bankDepositRepository.findByTenantIdAndDateRange(eq(TENANT_ID), any(), any()))
+                .thenReturn(List.of());
+
+        List<OperationDTO> result = operationsService.getOperations(FROM, TO, "BANK_DEPOSIT", null, "DATE_DESC", 0, 20);
+
+        assertThat(result).isEmpty();
+        verify(saleRepository, never()).findByTenantIdAndDateRangeStrict(any(), any(), any());
+    }
+
+    @Test
+    void getSummary_bankDepositDoesNotAffectIncomeOrExpense() {
+        stubEmptyRepos();
+        Sale sale = buildSale(1L, new BigDecimal("300.00"));
+        when(saleRepository.findByTenantIdAndDateRangeStrict(eq(TENANT_ID), any(), any()))
+                .thenReturn(List.of(sale));
+        // El depósito ya representa efectivo contado como ingreso vía la venta/cierre
+        // -- no debe volver a sumarse ni como ingreso ni como egreso.
+        when(bankDepositRepository.findByTenantIdAndDateRange(eq(TENANT_ID), any(), any()))
+                .thenReturn(List.of(buildBankDeposit(1L, new BigDecimal("300.00"))));
+
+        OperationSummaryDTO summary = operationsService.getSummary(FROM, TO, null);
+
+        assertThat(summary.getTotalIncome()).isEqualByComparingTo("300.00");
+        assertThat(summary.getTotalExpense()).isEqualByComparingTo("0.00");
+        assertThat(summary.getTotalOperations()).isEqualTo(2);
     }
 }

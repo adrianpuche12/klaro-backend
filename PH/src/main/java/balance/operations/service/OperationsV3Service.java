@@ -1,5 +1,7 @@
 package balance.operations.service;
 
+import balance.deposit.model.BankDeposit;
+import balance.deposit.repository.BankDepositRepository;
 import balance.model.ClosingDeposit;
 import balance.model.GastoAdmin;
 import balance.model.SalaryPayment;
@@ -32,9 +34,10 @@ public class OperationsV3Service {
     @Autowired private GastoAdminRepository     gastoAdminRepository;
     @Autowired private TransactionRepository    transactionRepository;
     @Autowired private StoreRepository          storeRepository;
+    @Autowired private BankDepositRepository    bankDepositRepository;
 
     private static final Set<String> ALL_TYPES =
-            Set.of("CLOSING", "SALE", "SUPPLIER", "SALARY", "GASTO_ADMIN", "TRANSACTION");
+            Set.of("CLOSING", "SALE", "SUPPLIER", "SALARY", "GASTO_ADMIN", "TRANSACTION", "BANK_DEPOSIT");
 
     /**
      * Lista unificada de operaciones del tenant con filtros opcionales.
@@ -73,9 +76,12 @@ public class OperationsV3Service {
             BigDecimal amt = op.getAmount() != null ? op.getAmount() : BigDecimal.ZERO;
             String type = op.getType();
 
+            // BANK_DEPOSIT es una reconciliación de caja ya contada como ingreso
+            // vía CLOSING/SALE -- no suma ni a ingreso ni a egreso, solo aparece
+            // en el listado y en el desglose por tipo.
             if ("SALE".equals(type) || "CLOSING".equals(type)) {
                 totalIncome = totalIncome.add(amt);
-            } else {
+            } else if (!"BANK_DEPOSIT".equals(type)) {
                 totalExpense = totalExpense.add(amt);
             }
 
@@ -105,6 +111,7 @@ public class OperationsV3Service {
         if (types.contains("SALARY"))      all.addAll(getSalaryPayments(tenantId, from, to, storeId));
         if (types.contains("GASTO_ADMIN")) all.addAll(getGastosAdmin(tenantId, from, to));
         if (types.contains("TRANSACTION")) all.addAll(getTransactions(tenantId, from, to, storeId));
+        if (types.contains("BANK_DEPOSIT")) all.addAll(getBankDeposits(tenantId, from, to, storeId));
         return all;
     }
 
@@ -187,11 +194,26 @@ public class OperationsV3Service {
         )).toList();
     }
 
+    private List<OperationDTO> getBankDeposits(Long tenantId, LocalDate from, LocalDate to, Long storeId) {
+        List<BankDeposit> list = storeId != null
+                ? bankDepositRepository.findByStoreIdAndTenantIdAndDateRange(storeId, tenantId, from, to)
+                : bankDepositRepository.findByTenantIdAndDateRange(tenantId, from, to);
+
+        // Se muestra declaredAmount, no la suma recalculada de los cierres --
+        // para reflejar diferencias reales de caja (ver gap-analysis SPRINT-11).
+        return list.stream().map(b -> OperationDTO.of(
+                "BANK_DEPOSIT", b.getId(), b.getDepositDate(), b.getDeclaredAmount(),
+                b.getStore() != null ? b.getStore().getId() : null,
+                b.getStore() != null ? b.getStore().getName() : null,
+                b.getUsername(), "Depósito bancario", null, null, b.getImageUri()
+        )).toList();
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private Set<String> parseTypes(String typeFilter) {
         if (typeFilter == null || typeFilter.isBlank()) {
-            return Set.of("CLOSING", "SALE", "SUPPLIER", "SALARY", "GASTO_ADMIN", "TRANSACTION");
+            return Set.of("CLOSING", "SALE", "SUPPLIER", "SALARY", "GASTO_ADMIN", "TRANSACTION", "BANK_DEPOSIT");
         }
         return Arrays.stream(typeFilter.split(","))
                 .map(String::trim).map(String::toUpperCase)
