@@ -338,7 +338,7 @@ class SalesServiceTest {
     void closeShift_throwsWhenShiftAlreadyClosed() {
         when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.CLOSED)));
 
-        assertThatThrownBy(() -> salesService.closeShift(1L, "admin"))
+        assertThatThrownBy(() -> salesService.closeShift(1L, "admin", null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("turno ya está cerrado");
     }
@@ -348,7 +348,7 @@ class SalesServiceTest {
         when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
         when(saleRepository.findOpenByShiftIdAndTenantId(1L, TENANT_ID)).thenReturn(List.of());
 
-        assertThatThrownBy(() -> salesService.closeShift(1L, "admin"))
+        assertThatThrownBy(() -> salesService.closeShift(1L, "admin", null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("No hay ventas abiertas");
     }
@@ -374,11 +374,51 @@ class SalesServiceTest {
         when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        salesService.closeShift(1L, "admin");
+        salesService.closeShift(1L, "admin", null);
 
         assertThat(sale1.getStatus()).isEqualTo(SaleStatus.CONFIRMED);
         assertThat(sale2.getStatus()).isEqualTo(SaleStatus.CONFIRMED);
         assertThat(shift.getStatus()).isEqualTo(ShiftStatus.CLOSED);
         assertThat(shift.getClosedAt()).isNotNull();
+    }
+
+    // ── closeShift — notas de turno (SPRINT-12) ─────────────────────────────────
+
+    @Test
+    void closeShift_savesNotesWhenProvided() {
+        Shift shift = buildShift(1L, ShiftStatus.OPEN);
+        Sale sale = new Sale(); sale.setStatus(SaleStatus.OPEN);
+        sale.setTotal(new BigDecimal("100.00"));
+        sale.setStore(buildStore(1L, "Danli"));
+        sale.setTenantId(TENANT_ID);
+
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(shift));
+        when(saleRepository.findOpenByShiftIdAndTenantId(1L, TENANT_ID)).thenReturn(List.of(sale));
+        when(formsService.saveClosingDeposit(any())).thenReturn(new ClosingDeposit());
+        when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        salesService.closeShift(1L, "admin", "Faltó cambio, se avisó al encargado");
+
+        assertThat(shift.getNotes()).isEqualTo("Faltó cambio, se avisó al encargado");
+    }
+
+    @Test
+    void closeShift_leavesNotesNull_whenBlankOrNotProvided() {
+        Shift shift = buildShift(1L, ShiftStatus.OPEN);
+        Sale sale = new Sale(); sale.setStatus(SaleStatus.OPEN);
+        sale.setTotal(new BigDecimal("100.00"));
+        sale.setStore(buildStore(1L, "Danli"));
+        sale.setTenantId(TENANT_ID);
+
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(shift));
+        when(saleRepository.findOpenByShiftIdAndTenantId(1L, TENANT_ID)).thenReturn(List.of(sale));
+        when(formsService.saveClosingDeposit(any())).thenReturn(new ClosingDeposit());
+        when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        salesService.closeShift(1L, "admin", "   ");
+
+        assertThat(shift.getNotes()).isNull();
     }
 }

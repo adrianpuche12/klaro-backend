@@ -198,7 +198,7 @@ public class SalesService {
     }
 
     @Transactional
-    public DailyClosingResponseDTO closeShift(Long shiftId, String username) {
+    public DailyClosingResponseDTO closeShift(Long shiftId, String username, String notes) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         Shift shift = shiftRepository.findByIdAndTenantId(shiftId, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
@@ -233,6 +233,7 @@ public class SalesService {
 
         shift.setStatus(ShiftStatus.CLOSED);
         shift.setClosedAt(java.time.LocalDateTime.now());
+        if (notes != null && !notes.isBlank()) shift.setNotes(notes.trim());
         shiftRepository.save(shift);
 
         return new DailyClosingResponseDTO(

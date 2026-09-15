@@ -43,4 +43,8 @@ public class Shift {
     private LocalDateTime openedAt;
 
     private LocalDateTime closedAt;
+
+    /** Observación opcional del empleado al cerrar el turno -- SPRINT-12. */
+    @Column(length = 500)
+    private String notes;
 }
