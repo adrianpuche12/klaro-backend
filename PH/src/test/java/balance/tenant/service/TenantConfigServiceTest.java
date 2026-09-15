@@ -13,6 +13,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
@@ -136,5 +137,45 @@ class TenantConfigServiceTest {
                 .filter(c -> c.getTenantId() != null)
                 .findFirst()
                 .ifPresent(c -> assertThat(c.getTenantId()).isEqualTo(TENANT_ID));
+    }
+
+    @Test
+    void updateConfig_setsCardSurchargeRate() {
+        TenantConfig existing = buildConfig("Klaro", "L", "America/Tegucigalpa");
+        when(configRepository.findById(TENANT_ID)).thenReturn(Optional.of(existing));
+        when(configRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        TenantConfigDTO dto = new TenantConfigDTO();
+        dto.setCardSurchargeRate(new BigDecimal("0.0300"));
+
+        TenantConfigDTO result = tenantConfigService.updateConfig(dto);
+
+        assertThat(result.getCardSurchargeRate()).isEqualByComparingTo("0.0300");
+    }
+
+    // ── getCardSurchargeRate ──────────────────────────────────────────────────
+
+    @Test
+    void getCardSurchargeRate_returnsConfiguredRate() {
+        TenantConfig existing = buildConfig("Klaro", "L", "America/Tegucigalpa");
+        existing.setCardSurchargeRate(new BigDecimal("0.0300"));
+        when(configRepository.findById(TENANT_ID)).thenReturn(Optional.of(existing));
+
+        assertThat(tenantConfigService.getCardSurchargeRate()).isEqualByComparingTo("0.0300");
+    }
+
+    @Test
+    void getCardSurchargeRate_returnsZero_whenNotConfigured() {
+        TenantConfig existing = buildConfig("Klaro", "L", "America/Tegucigalpa");
+        when(configRepository.findById(TENANT_ID)).thenReturn(Optional.of(existing));
+
+        assertThat(tenantConfigService.getCardSurchargeRate()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void getCardSurchargeRate_returnsZero_whenNoConfigExists() {
+        when(configRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThat(tenantConfigService.getCardSurchargeRate()).isEqualByComparingTo("0");
     }
 }

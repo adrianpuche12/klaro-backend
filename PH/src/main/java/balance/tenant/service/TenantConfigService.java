@@ -8,6 +8,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+
 @Service
 public class TenantConfigService {
 
@@ -33,6 +35,7 @@ public class TenantConfigService {
         if (dto.getCompanyLogo() != null) config.setCompanyLogo(dto.getCompanyLogo());
         if (dto.getAddress()     != null) config.setAddress(dto.getAddress());
         if (dto.getPhone()       != null) config.setPhone(dto.getPhone());
+        if (dto.getCardSurchargeRate() != null) config.setCardSurchargeRate(dto.getCardSurchargeRate());
 
         return TenantConfigDTO.from(configRepository.save(config));
     }
@@ -43,6 +46,14 @@ public class TenantConfigService {
         return configRepository.findById(tenantId)
                 .map(TenantConfig::getTimezone)
                 .orElse("America/Tegucigalpa");
+    }
+
+    /** Fracción de recargo por tarjeta del tenant actual, o ZERO si no está configurada -- SPRINT-12. */
+    public BigDecimal getCardSurchargeRate() {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        return configRepository.findById(tenantId)
+                .map(TenantConfig::getCardSurchargeRate)
+                .orElse(BigDecimal.ZERO);
     }
 
     private TenantConfig defaultConfig(Long tenantId) {

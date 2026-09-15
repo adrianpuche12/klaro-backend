@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
+
 @Getter
 @Setter
 @Entity
@@ -31,4 +33,8 @@ public class TenantConfig {
 
     @Column(length = 30)
     private String phone;
+
+    /** Fracción (0.03 = 3%) aplicada al monto pagado con tarjeta. Null = sin recargo -- SPRINT-12. */
+    @Column(name = "card_surcharge_rate", precision = 5, scale = 4)
+    private BigDecimal cardSurchargeRate;
 }

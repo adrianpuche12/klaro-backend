@@ -106,33 +106,46 @@ public class SalesService {
             totalTax = totalTax.add(itemTax);
         }
 
-        BigDecimal total = subtotal.add(totalTax);
+        BigDecimal total = subtotal.add(totalTax); // base, antes de recargo por tarjeta
         sale.setSubtotal(subtotal);
         sale.setIsv(totalTax);   // "isv" almacena el impuesto calculado dinámicamente
-        sale.setTotal(total);
 
+        // Recargo por tarjeta (SPRINT-12): configurable por tenant, se aplica
+        // solo sobre la porción pagada con tarjeta -- nunca sobre la de efectivo.
+        BigDecimal surchargeRate = tenantConfigService.getCardSurchargeRate();
         String paymentMethod = request.getPaymentMethod() != null ? request.getPaymentMethod() : "CASH";
         sale.setPaymentMethod(paymentMethod);
         switch (paymentMethod) {
             case "CARD":
+                BigDecimal cardTotal = applyCardSurcharge(total, surchargeRate);
                 sale.setCashAmount(BigDecimal.ZERO);
-                sale.setCardAmount(total);
+                sale.setCardAmount(cardTotal);
+                total = cardTotal;
                 break;
             case "MIXED":
                 BigDecimal cash = request.getCashAmount() != null ? request.getCashAmount() : BigDecimal.ZERO;
-                BigDecimal card = request.getCardAmount() != null ? request.getCardAmount() : BigDecimal.ZERO;
+                BigDecimal cardBase = request.getCardAmount() != null ? request.getCardAmount() : BigDecimal.ZERO;
+                BigDecimal cardAmount = applyCardSurcharge(cardBase, surchargeRate);
                 sale.setCashAmount(cash);
-                sale.setCardAmount(card);
+                sale.setCardAmount(cardAmount);
+                total = cash.add(cardAmount);
                 break;
             default:
                 sale.setCashAmount(total);
                 sale.setCardAmount(BigDecimal.ZERO);
                 break;
         }
+        sale.setTotal(total);
 
         saleRepository.save(sale);
         deductStock(store.getId(), sale.getItems(), request.getUsername());
         return SaleResponseDTO.from(sale);
+    }
+
+    /** amount * (1 + rate), o amount sin cambios si rate es null/ZERO. */
+    private BigDecimal applyCardSurcharge(BigDecimal amount, BigDecimal rate) {
+        if (rate == null || rate.compareTo(BigDecimal.ZERO) == 0) return amount;
+        return amount.multiply(BigDecimal.ONE.add(rate)).setScale(2, RoundingMode.HALF_UP);
     }
 
     @Transactional

@@ -61,6 +61,7 @@ class SalesServiceTest {
     void setTenantContext() {
         TenantContext.setTenantId(TENANT_ID);
         org.mockito.Mockito.lenient().when(tenantConfigService.getTimezone()).thenReturn("America/Tegucigalpa");
+        org.mockito.Mockito.lenient().when(tenantConfigService.getCardSurchargeRate()).thenReturn(BigDecimal.ZERO);
         org.mockito.Mockito.lenient().when(taxService.calculateTax(any(), any(), any())).thenReturn(BigDecimal.ZERO);
     }
 
@@ -160,6 +161,74 @@ class SalesServiceTest {
 
         // total = subtotal + isv (siempre consistente)
         assertThat(result.getTotal()).isEqualByComparingTo(result.getSubtotal().add(result.getIsv()));
+    }
+
+    // ── createSale — recargo por tarjeta (SPRINT-12) ────────────────────────────
+
+    @Test
+    void createSale_appliesCardSurcharge_whenPaymentMethodIsCard() {
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
+        when(productRepository.findById(1L)).thenReturn(Optional.of(buildProduct(1L, "Pollo", new BigDecimal("100.00"))));
+        when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(tenantConfigService.getCardSurchargeRate()).thenReturn(new BigDecimal("0.03"));
+
+        SaleRequestDTO request = buildRequest("cajero01", 1L, 2); // subtotal base = 200.00
+        request.setPaymentMethod("CARD");
+
+        SaleResponseDTO result = salesService.createSale(1L, request);
+
+        assertThat(result.getCashAmount()).isEqualByComparingTo("0.00");
+        assertThat(result.getCardAmount()).isEqualByComparingTo("206.00");
+        assertThat(result.getTotal()).isEqualByComparingTo("206.00");
+    }
+
+    @Test
+    void createSale_noSurcharge_whenPaymentMethodIsCash() {
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
+        when(productRepository.findById(1L)).thenReturn(Optional.of(buildProduct(1L, "Pollo", new BigDecimal("100.00"))));
+        when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(tenantConfigService.getCardSurchargeRate()).thenReturn(new BigDecimal("0.03"));
+
+        SaleResponseDTO result = salesService.createSale(1L, buildRequest("cajero01", 1L, 2)); // default CASH
+
+        assertThat(result.getCashAmount()).isEqualByComparingTo("200.00");
+        assertThat(result.getCardAmount()).isEqualByComparingTo("0.00");
+        assertThat(result.getTotal()).isEqualByComparingTo("200.00");
+    }
+
+    @Test
+    void createSale_appliesSurchargeOnlyToCardPortion_whenMixed() {
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
+        when(productRepository.findById(1L)).thenReturn(Optional.of(buildProduct(1L, "Pollo", new BigDecimal("100.00"))));
+        when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(tenantConfigService.getCardSurchargeRate()).thenReturn(new BigDecimal("0.03"));
+
+        SaleRequestDTO request = buildRequest("cajero01", 1L, 2); // subtotal base = 200.00
+        request.setPaymentMethod("MIXED");
+        request.setCashAmount(new BigDecimal("100.00"));
+        request.setCardAmount(new BigDecimal("100.00"));
+
+        SaleResponseDTO result = salesService.createSale(1L, request);
+
+        assertThat(result.getCashAmount()).isEqualByComparingTo("100.00");   // sin recargo
+        assertThat(result.getCardAmount()).isEqualByComparingTo("103.00");   // 100 + 3%
+        assertThat(result.getTotal()).isEqualByComparingTo("203.00");
+    }
+
+    @Test
+    void createSale_noSurcharge_whenRateNotConfigured() {
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
+        when(productRepository.findById(1L)).thenReturn(Optional.of(buildProduct(1L, "Pollo", new BigDecimal("100.00"))));
+        when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        // tenantConfigService.getCardSurchargeRate() -> ZERO, stub por defecto del setUp
+
+        SaleRequestDTO request = buildRequest("cajero01", 1L, 2);
+        request.setPaymentMethod("CARD");
+
+        SaleResponseDTO result = salesService.createSale(1L, request);
+
+        assertThat(result.getCardAmount()).isEqualByComparingTo("200.00");
+        assertThat(result.getTotal()).isEqualByComparingTo("200.00");
     }
 
     // ── createSale — snapshot de producto ─────────────────────────────────────
