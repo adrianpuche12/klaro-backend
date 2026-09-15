@@ -15,6 +15,7 @@ public class ShiftResponseDTO {
     private String storeName;
     private LocalDateTime openedAt;
     private LocalDateTime closedAt;
+    private String notes;
 
     public static ShiftResponseDTO from(Shift s) {
         ShiftResponseDTO dto = new ShiftResponseDTO();
@@ -24,6 +25,7 @@ public class ShiftResponseDTO {
         dto.status    = s.getStatus() != null ? s.getStatus().name() : null;
         dto.openedAt  = s.getOpenedAt();
         dto.closedAt  = s.getClosedAt();
+        dto.notes     = s.getNotes();
         if (s.getStore() != null) {
             dto.storeId   = s.getStore().getId();
             dto.storeName = s.getStore().getName();

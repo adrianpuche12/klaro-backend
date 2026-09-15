@@ -201,7 +201,7 @@ class SalesControllerTest {
 
     @Test
     void closeShift_returns400WhenNoOpenSales() throws Exception {
-        when(salesService.closeShift(eq(1L), any()))
+        when(salesService.closeShift(eq(1L), any(), any()))
                 .thenThrow(new IllegalStateException("No hay ventas abiertas para cerrar en este turno"));
 
         String body = objectMapper.writeValueAsString(Map.of("username", "admin"));
@@ -211,6 +211,22 @@ class SalesControllerTest {
                         .content(body))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void closeShift_passesNotesFromBody() throws Exception {
+        when(salesService.closeShift(eq(1L), eq("admin"), eq("todo cuadrado")))
+                .thenReturn(new DailyClosingResponseDTO(
+                        1L, "T-1", LocalDate.now(), 1L, "Danli", 1, BigDecimal.TEN, 5L));
+
+        String body = objectMapper.writeValueAsString(Map.of("username", "admin", "notes", "todo cuadrado"));
+
+        mockMvc.perform(post("/api/v2/shifts/1/closing")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+
+        verify(salesService).closeShift(1L, "admin", "todo cuadrado");
     }
 
     // â”€â”€ Helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

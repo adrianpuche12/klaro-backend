@@ -98,12 +98,14 @@ public class SalesController {
     }
 
     // Confirmar cierre de turno (integra con sistema V1)
+    // "notes": observación opcional del cajero -- SPRINT-12
     @PostMapping("/shifts/{shiftId}/closing")
     public ResponseEntity<?> closeShift(@PathVariable Long shiftId,
                                          @RequestBody Map<String, String> body) {
         try {
             String username = body.getOrDefault("username", "unknown");
-            return ResponseEntity.ok(salesService.closeShift(shiftId, username));
+            String notes = body.get("notes");
+            return ResponseEntity.ok(salesService.closeShift(shiftId, username, notes));
         } catch (IllegalArgumentException | IllegalStateException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
