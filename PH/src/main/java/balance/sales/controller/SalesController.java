@@ -2,6 +2,7 @@ package balance.sales.controller;
 
 import balance.sales.dto.*;
 import balance.sales.service.SalesService;
+import balance.sales.service.ShiftExpenseService;
 import balance.users.model.PermissionModule;
 import balance.users.service.PermissionGuard;
 import jakarta.validation.Valid;
@@ -10,6 +11,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +26,9 @@ public class SalesController {
 
     @Autowired
     private PermissionGuard permissionGuard;
+
+    @Autowired
+    private ShiftExpenseService shiftExpenseService;
 
     // Registrar venta en un turno
     @PostMapping("/shifts/{shiftId}/sales")
@@ -99,16 +104,41 @@ public class SalesController {
 
     // Confirmar cierre de turno (integra con sistema V1)
     // "notes": observación opcional del cajero -- SPRINT-12
+    // "openingCash"/"declaredCash": reconciliación de caja opcional -- SPRINT-12
+    // (si se omite cualquiera de los dos, se cierra sin reconciliar, igual que antes)
     @PostMapping("/shifts/{shiftId}/closing")
     public ResponseEntity<?> closeShift(@PathVariable Long shiftId,
-                                         @RequestBody Map<String, String> body) {
+                                         @RequestBody Map<String, Object> body) {
         try {
-            String username = body.getOrDefault("username", "unknown");
-            String notes = body.get("notes");
-            return ResponseEntity.ok(salesService.closeShift(shiftId, username, notes));
+            String username = body.getOrDefault("username", "unknown").toString();
+            String notes = body.get("notes") != null ? body.get("notes").toString() : null;
+            BigDecimal openingCash = toBigDecimal(body.get("openingCash"));
+            BigDecimal declaredCash = toBigDecimal(body.get("declaredCash"));
+            return ResponseEntity.ok(salesService.closeShift(shiftId, username, notes, openingCash, declaredCash));
         } catch (IllegalArgumentException | IllegalStateException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
+    }
+
+    private BigDecimal toBigDecimal(Object value) {
+        return value != null ? new BigDecimal(value.toString()) : null;
+    }
+
+    // ── Egresos de caja del turno (SPRINT-12) ───────────────────────────────────
+
+    @PostMapping("/shifts/{shiftId}/expenses")
+    public ResponseEntity<?> addExpense(@PathVariable Long shiftId,
+                                         @Valid @RequestBody ShiftExpenseRequestDTO request) {
+        try {
+            return ResponseEntity.ok(shiftExpenseService.addExpense(shiftId, request));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/shifts/{shiftId}/expenses")
+    public ResponseEntity<List<ShiftExpenseResponseDTO>> getExpenses(@PathVariable Long shiftId) {
+        return ResponseEntity.ok(shiftExpenseService.getExpensesForShift(shiftId));
     }
 }
 

@@ -2,6 +2,7 @@ package balance.sales.controller;
 
 import balance.sales.dto.*;
 import balance.sales.service.SalesService;
+import balance.sales.service.ShiftExpenseService;
 import balance.users.service.PermissionGuard;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -30,8 +31,9 @@ class SalesControllerTest {
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
 
-    @MockBean private SalesService    salesService;
-    @MockBean private PermissionGuard permissionGuard;
+    @MockBean private SalesService        salesService;
+    @MockBean private PermissionGuard     permissionGuard;
+    @MockBean private ShiftExpenseService shiftExpenseService;
 
     // â”€â”€ POST /api/v2/shifts/{shiftId}/sales â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -201,7 +203,7 @@ class SalesControllerTest {
 
     @Test
     void closeShift_returns400WhenNoOpenSales() throws Exception {
-        when(salesService.closeShift(eq(1L), any(), any()))
+        when(salesService.closeShift(eq(1L), any(), any(), any(), any()))
                 .thenThrow(new IllegalStateException("No hay ventas abiertas para cerrar en este turno"));
 
         String body = objectMapper.writeValueAsString(Map.of("username", "admin"));
@@ -215,7 +217,7 @@ class SalesControllerTest {
 
     @Test
     void closeShift_passesNotesFromBody() throws Exception {
-        when(salesService.closeShift(eq(1L), eq("admin"), eq("todo cuadrado")))
+        when(salesService.closeShift(eq(1L), eq("admin"), eq("todo cuadrado"), any(), any()))
                 .thenReturn(new DailyClosingResponseDTO(
                         1L, "T-1", LocalDate.now(), 1L, "Danli", 1, BigDecimal.TEN, 5L));
 
@@ -226,7 +228,69 @@ class SalesControllerTest {
                         .content(body))
                 .andExpect(status().isOk());
 
-        verify(salesService).closeShift(1L, "admin", "todo cuadrado");
+        verify(salesService).closeShift(1L, "admin", "todo cuadrado", null, null);
+    }
+
+    @Test
+    void closeShift_passesReconciliationAmountsFromBody() throws Exception {
+        when(salesService.closeShift(eq(1L), eq("admin"), any(), eq(new BigDecimal("50.00")), eq(new BigDecimal("125.00"))))
+                .thenReturn(new DailyClosingResponseDTO(
+                        1L, "T-1", LocalDate.now(), 1L, "Danli", 1, BigDecimal.TEN, 5L));
+
+        String body = objectMapper.writeValueAsString(
+                Map.of("username", "admin", "openingCash", "50.00", "declaredCash", "125.00"));
+
+        mockMvc.perform(post("/api/v2/shifts/1/closing")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+
+        verify(salesService).closeShift(1L, "admin", null, new BigDecimal("50.00"), new BigDecimal("125.00"));
+    }
+
+    // â”€â”€ POST/GET /api/v2/shifts/{shiftId}/expenses (SPRINT-12) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    @Test
+    void addExpense_returns200WhenSuccessful() throws Exception {
+        ShiftExpenseResponseDTO response = new ShiftExpenseResponseDTO();
+        ReflectionTestUtils.setField(response, "id", 1L);
+        ReflectionTestUtils.setField(response, "shiftId", 1L);
+        ReflectionTestUtils.setField(response, "amount", new BigDecimal("20.00"));
+        ReflectionTestUtils.setField(response, "reason", "Pago repartidor");
+        when(shiftExpenseService.addExpense(eq(1L), any())).thenReturn(response);
+
+        String body = objectMapper.writeValueAsString(
+                Map.of("amount", "20.00", "reason", "Pago repartidor", "username", "cajero01"));
+
+        mockMvc.perform(post("/api/v2/shifts/1/expenses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reason").value("Pago repartidor"));
+    }
+
+    @Test
+    void addExpense_returns400WhenShiftClosed() throws Exception {
+        when(shiftExpenseService.addExpense(eq(1L), any()))
+                .thenThrow(new IllegalStateException("No se pueden registrar egresos en un turno cerrado"));
+
+        String body = objectMapper.writeValueAsString(
+                Map.of("amount", "20.00", "reason", "Pago repartidor", "username", "cajero01"));
+
+        mockMvc.perform(post("/api/v2/shifts/1/expenses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void getExpenses_returns200WithList() throws Exception {
+        when(shiftExpenseService.getExpensesForShift(1L)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v2/shifts/1/expenses"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
     }
 
     // â”€â”€ Helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

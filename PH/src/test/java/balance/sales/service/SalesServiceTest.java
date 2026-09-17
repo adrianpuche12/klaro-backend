@@ -9,6 +9,7 @@ import balance.inventory.service.InventoryService;
 import balance.model.ClosingDeposit;
 import balance.model.Store;
 import balance.repository.StoreRepository;
+import balance.sales.dto.DailyClosingResponseDTO;
 import balance.sales.dto.SaleItemRequestDTO;
 import balance.sales.dto.SaleRequestDTO;
 import balance.sales.dto.SaleResponseDTO;
@@ -16,6 +17,7 @@ import balance.sales.model.Sale;
 import balance.sales.model.SaleItem;
 import balance.sales.model.Shift;
 import balance.sales.repository.SaleRepository;
+import balance.sales.repository.ShiftReconciliationRepository;
 import balance.sales.repository.ShiftRepository;
 import balance.service.FormsService;
 import balance.tax.service.TaxService;
@@ -56,6 +58,8 @@ class SalesServiceTest {
     @Mock private TenantConfigService tenantConfigService;
     @Mock private TaxService          taxService;
     @Mock private PermissionGuard     permissionGuard;
+    @Mock private ShiftExpenseService shiftExpenseService;
+    @Mock private ShiftReconciliationRepository shiftReconciliationRepository;
 
     @BeforeEach
     void setTenantContext() {
@@ -63,6 +67,8 @@ class SalesServiceTest {
         org.mockito.Mockito.lenient().when(tenantConfigService.getTimezone()).thenReturn("America/Tegucigalpa");
         org.mockito.Mockito.lenient().when(tenantConfigService.getCardSurchargeRate()).thenReturn(BigDecimal.ZERO);
         org.mockito.Mockito.lenient().when(taxService.calculateTax(any(), any(), any())).thenReturn(BigDecimal.ZERO);
+        org.mockito.Mockito.lenient().when(shiftExpenseService.getTotalExpenses(any(), any())).thenReturn(BigDecimal.ZERO);
+        org.mockito.Mockito.lenient().when(shiftReconciliationRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
     }
 
     @AfterEach
@@ -407,7 +413,7 @@ class SalesServiceTest {
     void closeShift_throwsWhenShiftAlreadyClosed() {
         when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.CLOSED)));
 
-        assertThatThrownBy(() -> salesService.closeShift(1L, "admin", null))
+        assertThatThrownBy(() -> salesService.closeShift(1L, "admin", null, null, null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("turno ya está cerrado");
     }
@@ -417,7 +423,7 @@ class SalesServiceTest {
         when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
         when(saleRepository.findOpenByShiftIdAndTenantId(1L, TENANT_ID)).thenReturn(List.of());
 
-        assertThatThrownBy(() -> salesService.closeShift(1L, "admin", null))
+        assertThatThrownBy(() -> salesService.closeShift(1L, "admin", null, null, null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("No hay ventas abiertas");
     }
@@ -443,7 +449,7 @@ class SalesServiceTest {
         when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        salesService.closeShift(1L, "admin", null);
+        salesService.closeShift(1L, "admin", null, null, null);
 
         assertThat(sale1.getStatus()).isEqualTo(SaleStatus.CONFIRMED);
         assertThat(sale2.getStatus()).isEqualTo(SaleStatus.CONFIRMED);
@@ -467,7 +473,7 @@ class SalesServiceTest {
         when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        salesService.closeShift(1L, "admin", "Faltó cambio, se avisó al encargado");
+        salesService.closeShift(1L, "admin", "Faltó cambio, se avisó al encargado", null, null);
 
         assertThat(shift.getNotes()).isEqualTo("Faltó cambio, se avisó al encargado");
     }
@@ -486,8 +492,56 @@ class SalesServiceTest {
         when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        salesService.closeShift(1L, "admin", "   ");
+        salesService.closeShift(1L, "admin", "   ", null, null);
 
         assertThat(shift.getNotes()).isNull();
+    }
+
+    // ── closeShift — reconciliación de caja (SPRINT-12) ─────────────────────────
+
+    @Test
+    void closeShift_computesExpectedCashAndDifference_whenReconciliationProvided() {
+        Shift shift = buildShift(1L, ShiftStatus.OPEN);
+        Sale sale = new Sale(); sale.setStatus(SaleStatus.OPEN);
+        sale.setTotal(new BigDecimal("100.00"));
+        sale.setCashAmount(new BigDecimal("100.00"));
+        sale.setCardAmount(BigDecimal.ZERO);
+        sale.setStore(buildStore(1L, "Danli"));
+        sale.setTenantId(TENANT_ID);
+
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(shift));
+        when(saleRepository.findOpenByShiftIdAndTenantId(1L, TENANT_ID)).thenReturn(List.of(sale));
+        when(formsService.saveClosingDeposit(any())).thenReturn(new ClosingDeposit());
+        when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(shiftExpenseService.getTotalExpenses(1L, TENANT_ID)).thenReturn(new BigDecimal("20.00"));
+
+        // esperado = 50 (fondo) + 100 (ventas efectivo) - 20 (egresos) = 130
+        DailyClosingResponseDTO result = salesService.closeShift(
+                1L, "admin", null, new BigDecimal("50.00"), new BigDecimal("125.00"));
+
+        assertThat(result.getReconciliation()).isNotNull();
+        assertThat(result.getReconciliation().getExpectedCash()).isEqualByComparingTo("130.00");
+        assertThat(result.getReconciliation().getDifference()).isEqualByComparingTo("-5.00"); // faltan 5
+    }
+
+    @Test
+    void closeShift_skipsReconciliation_whenAmountsNotProvided() {
+        Shift shift = buildShift(1L, ShiftStatus.OPEN);
+        Sale sale = new Sale(); sale.setStatus(SaleStatus.OPEN);
+        sale.setTotal(new BigDecimal("100.00"));
+        sale.setStore(buildStore(1L, "Danli"));
+        sale.setTenantId(TENANT_ID);
+
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(shift));
+        when(saleRepository.findOpenByShiftIdAndTenantId(1L, TENANT_ID)).thenReturn(List.of(sale));
+        when(formsService.saveClosingDeposit(any())).thenReturn(new ClosingDeposit());
+        when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        DailyClosingResponseDTO result = salesService.closeShift(1L, "admin", null, null, null);
+
+        assertThat(result.getReconciliation()).isNull();
+        verify(shiftReconciliationRepository, never()).save(any());
     }
 }

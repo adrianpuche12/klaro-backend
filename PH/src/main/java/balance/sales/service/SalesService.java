@@ -13,7 +13,9 @@ import balance.sales.dto.*;
 import balance.sales.model.Sale;
 import balance.sales.model.SaleItem;
 import balance.sales.model.Shift;
+import balance.sales.model.ShiftReconciliation;
 import balance.sales.repository.SaleRepository;
+import balance.sales.repository.ShiftReconciliationRepository;
 import balance.sales.repository.ShiftRepository;
 import balance.service.FormsService;
 import balance.tax.service.TaxService;
@@ -49,6 +51,8 @@ public class SalesService {
     @Autowired private TenantConfigService tenantConfigService;
     @Autowired private TaxService taxService;
     @Autowired private PermissionGuard permissionGuard;
+    @Autowired private ShiftExpenseService shiftExpenseService;
+    @Autowired private ShiftReconciliationRepository shiftReconciliationRepository;
 
     @Transactional
     public SaleResponseDTO createSale(Long shiftId, SaleRequestDTO request) {
@@ -211,7 +215,8 @@ public class SalesService {
     }
 
     @Transactional
-    public DailyClosingResponseDTO closeShift(Long shiftId, String username, String notes) {
+    public DailyClosingResponseDTO closeShift(Long shiftId, String username, String notes,
+                                               BigDecimal openingCash, BigDecimal declaredCash) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         Shift shift = shiftRepository.findByIdAndTenantId(shiftId, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
@@ -249,10 +254,31 @@ public class SalesService {
         if (notes != null && !notes.isBlank()) shift.setNotes(notes.trim());
         shiftRepository.save(shift);
 
+        // Reconciliación de caja (SPRINT-12) -- opcional: solo si se declaran
+        // ambos montos. Sin esto, cerrar un turno sigue funcionando igual que
+        // antes (compatibilidad con el flujo existente).
+        ShiftReconciliationResponseDTO reconciliation = null;
+        if (openingCash != null && declaredCash != null) {
+            BigDecimal totalCashSales = openSales.stream()
+                    .map(Sale::getCashAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal totalExpenses = shiftExpenseService.getTotalExpenses(shiftId, tenantId);
+            BigDecimal expectedCash = openingCash.add(totalCashSales).subtract(totalExpenses);
+
+            ShiftReconciliation reconciliationEntity = new ShiftReconciliation();
+            reconciliationEntity.setTenantId(tenantId);
+            reconciliationEntity.setShift(shift);
+            reconciliationEntity.setOpeningCash(openingCash);
+            reconciliationEntity.setDeclaredCash(declaredCash);
+            reconciliationEntity.setExpectedCash(expectedCash);
+            reconciliationEntity.setDifference(declaredCash.subtract(expectedCash));
+            reconciliation = ShiftReconciliationResponseDTO.from(
+                    shiftReconciliationRepository.save(reconciliationEntity));
+        }
+
         return new DailyClosingResponseDTO(
                 shift.getId(), shift.getCode(), LocalDate.now(HONDURAS_TZ),
                 shift.getStore().getId(), shift.getStore().getName(),
-                openSales.size(), totalAmount, saved.getId());
+                openSales.size(), totalAmount, saved.getId(), reconciliation);
     }
 
     private DailySummaryDTO buildSummary(List<Sale> sales, Store store, LocalDate date) {
