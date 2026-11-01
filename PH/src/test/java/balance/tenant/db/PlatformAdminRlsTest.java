@@ -82,6 +82,7 @@ class PlatformAdminRlsTest {
     @Autowired AppUserRepository appUserRepository;
     @Autowired StoreRepository storeRepository;
     @MockBean KeycloakAdminService keycloakAdminService;
+    @Autowired jakarta.persistence.EntityManagerFactory entityManagerFactory;
 
     @BeforeEach
     void clean() {
@@ -157,6 +158,35 @@ class PlatformAdminRlsTest {
         assertThat(appUserRepository.findAll()).extracting(AppUser::getUsername).containsExactly("dueno.nuevo");
         assertThat(storeRepository.findAll()).isEmpty();
         assertThat(tenantRepository.findAll()).extracting(Tenant::getSlug).containsExactly("panaderia-sol");
+    }
+
+    /**
+     * Regresión (DEV, 01-Nov-2026): en el servidor está activo open-in-view, que deja UN EntityManager
+     * (y su conexión) atado a todo el request. El cambio de tenant no puede depender de que cada paso
+     * tome una conexión nueva del pool. Se simula igual que OpenEntityManagerInViewInterceptor.
+     */
+    @Test
+    void onboarding_withOpenEntityManagerInView_putsRootUserInTheNewTenant() {
+        when(keycloakAdminService.createUser(anyString(), anyString(), anyString(), eq("root"), anyLong())).thenReturn("kc-osiv");
+        TenantContext.setTenantId(PLATFORM);
+        jakarta.persistence.EntityManager em = entityManagerFactory.createEntityManager();
+        org.springframework.transaction.support.TransactionSynchronizationManager.bindResource(
+                entityManagerFactory, new org.springframework.orm.jpa.EntityManagerHolder(em));
+        long newId;
+        try {
+            // Una lectura previa del request (como TenantFilter / la plataforma) abre la conexión con tenant 0.
+            tenantRepository.findAll();
+            newId = onboardingService.onboard(request("cafe-osiv", "dueno.osiv")).tenant().getId();
+            // Al terminar, la conexión del request vuelve al tenant de la plataforma: no ve datos de negocio.
+            assertThat(appUserRepository.findAll()).isEmpty();
+        } finally {
+            org.springframework.transaction.support.TransactionSynchronizationManager.unbindResource(entityManagerFactory);
+            em.close();
+        }
+
+        // Un request nuevo del dueño de la empresa nueva lo encuentra en su tenant.
+        TenantContext.setTenantId(newId);
+        assertThat(appUserRepository.findAll()).extracting(AppUser::getUsername).containsExactly("dueno.osiv");
     }
 
     @Test
