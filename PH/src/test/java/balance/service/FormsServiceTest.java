@@ -231,4 +231,61 @@ class FormsServiceTest {
 
         assertThat(formsService.getAllOperations()).isEmpty();
     }
+
+    // ── El local de un registro tiene que ser de la empresa actual ───────────
+
+    private Store foreignStoreRef() {
+        Store ref = new Store();
+        ref.setId(99L);
+        return ref;
+    }
+
+    @Test
+    void createClosingDeposit_setsTenantFromToken_andResolvesStore() {
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L)));
+        when(closingDepositRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        ClosingDeposit d = new ClosingDeposit();
+        d.setAmount(new BigDecimal("100.00"));
+        Store ref = new Store(); ref.setId(1L);
+        d.setStore(ref);
+        d.setTenantId(2L); // lo que diga el body no importa
+
+        ClosingDeposit saved = formsService.createClosingDeposit(d);
+
+        assertThat(saved.getTenantId()).isEqualTo(TENANT_ID);
+        assertThat(saved.getStore().getName()).isEqualTo("Danli");
+    }
+
+    @Test
+    void createClosingDeposit_rejectsStoreOfAnotherCompany() {
+        when(storeRepository.findByIdAndTenantId(99L, TENANT_ID)).thenReturn(Optional.empty());
+        ClosingDeposit d = new ClosingDeposit();
+        d.setAmount(new BigDecimal("100.00"));
+        d.setStore(foreignStoreRef());
+
+        assertThatThrownBy(() -> formsService.createClosingDeposit(d)).isInstanceOf(IllegalArgumentException.class);
+        verify(closingDepositRepository, never()).save(any());
+    }
+
+    @Test
+    void saveSupplierPayment_rejectsStoreOfAnotherCompany() {
+        when(storeRepository.findByIdAndTenantId(99L, TENANT_ID)).thenReturn(Optional.empty());
+        SupplierPayment p = new SupplierPayment();
+        p.setAmount(new BigDecimal("10.00"));
+        p.setStore(foreignStoreRef());
+
+        assertThatThrownBy(() -> formsService.saveSupplierPayment(p)).isInstanceOf(IllegalArgumentException.class);
+        verify(supplierPaymentRepository, never()).save(any());
+    }
+
+    @Test
+    void saveSalaryPayment_rejectsStoreOfAnotherCompany() {
+        when(storeRepository.findByIdAndTenantId(99L, TENANT_ID)).thenReturn(Optional.empty());
+        SalaryPayment p = new SalaryPayment();
+        p.setAmount(new BigDecimal("10.00"));
+        p.setStore(foreignStoreRef());
+
+        assertThatThrownBy(() -> formsService.saveSalaryPayment(p)).isInstanceOf(IllegalArgumentException.class);
+        verify(salaryPaymentRepository, never()).save(any());
+    }
 }

@@ -101,6 +101,31 @@ public class FormsService {
 
     // ── ClosingDeposit ────────────────────────────────────────────────────
 
+    /**
+     * Alta de un depósito desde el formulario (POST /api/forms/closing-deposits).
+     * La empresa sale del token y el local tiene que ser de esa empresa: antes el body se
+     * guardaba tal cual (sin tenant → error 500, y con un local de otra empresa).
+     */
+    @Transactional
+    public ClosingDeposit createClosingDeposit(ClosingDeposit deposit) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        deposit.setTenantId(tenantId);
+        deposit.setStore(resolveStore(deposit.getStore(), tenantId));
+        return saveClosingDeposit(deposit);
+    }
+
+    /**
+     * El local que llega en un body tiene que pertenecer a la empresa actual. Postgres no
+     * aplica RLS a las claves foráneas, así que sin esta validación se podía asociar un
+     * registro al local de OTRA empresa. null se respeta (algunos registros no tienen local).
+     */
+    private Store resolveStore(Store fromBody, Long tenantId) {
+        if (fromBody == null || fromBody.getId() == null) {
+            return null;
+        }
+        return TenantSecurityUtils.requireStore(fromBody.getId(), tenantId, storeRepository);
+    }
+
     /** Usado internamente por SalesService — el tenantId ya viene seteado en el objeto. */
     @Transactional
     public ClosingDeposit saveClosingDeposit(ClosingDeposit deposit) {
@@ -162,6 +187,7 @@ public class FormsService {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         if (payment.getPaymentDate() == null) payment.setPaymentDate(tenantConfigService.today());
         payment.setTenantId(tenantId);
+        payment.setStore(resolveStore(payment.getStore(), tenantId));
         return supplierPaymentRepository.save(payment);
     }
 
@@ -211,6 +237,7 @@ public class FormsService {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         if (payment.getSalaryDate() == null) payment.setSalaryDate(tenantConfigService.today());
         payment.setTenantId(tenantId);
+        payment.setStore(resolveStore(payment.getStore(), tenantId));
         return salaryPaymentRepository.save(payment);
     }
 
