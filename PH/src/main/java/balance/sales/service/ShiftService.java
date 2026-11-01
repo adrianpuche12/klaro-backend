@@ -93,7 +93,8 @@ public class ShiftService {
 
     private String generateCode(Store store) {
         String date = tenantConfigService.today().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        String time = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmm"));
+        // Hora de la empresa (no la del servidor, que corre en UTC), igual que la fecha.
+        String time = LocalTime.now(tenantConfigService.zoneId()).format(DateTimeFormatter.ofPattern("HHmm"));
         String storePart = store.getName()
                 .replaceAll("[^a-zA-Z]", "")
                 .toUpperCase();
