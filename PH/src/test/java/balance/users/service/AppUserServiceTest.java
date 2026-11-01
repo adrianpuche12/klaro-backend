@@ -497,7 +497,32 @@ class AppUserServiceTest {
         Role role = buildRole(9L, "Contador", 1);
         when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
         when(roleService.findOrThrow(9L, TENANT_ID)).thenReturn(role);
-        doThrow(new AccessDeniedException("denegado")).when(roleService).assertCanManage(role);
+        lenient().doThrow(new AccessDeniedException("denegado")).when(roleService).assertCanManage(role);
+
+        assertThatThrownBy(() -> appUserService.updateRole(1L, 9L)).isInstanceOf(AccessDeniedException.class);
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void updateRole_checksTheCurrentRoleToo_soAManagerCannotDemoteAPeer() {
+        AppUser peer = buildUser(1L, "otro.encargado", AppUserStatus.ACTIVE);
+        Role peerRole = buildRole(5L, "Encargado", 1);
+        peer.setRole(peerRole);
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(peer));
+        doThrow(new AccessDeniedException("No podés gestionar un usuario de tu mismo nivel o superior"))
+                .when(roleService).assertCanManage(peerRole);
+
+        assertThatThrownBy(() -> appUserService.updateRole(1L, 9L)).isInstanceOf(AccessDeniedException.class);
+        verify(roleService, never()).findOrThrow(anyLong(), anyLong());
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void updateRole_ownerWithoutRole_cannotBeChangedByANonRoot() {
+        AppUser owner = buildUser(1L, "dueno", AppUserStatus.ACTIVE); // sin Role = acceso total
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(owner));
+        doThrow(new AccessDeniedException("No podés gestionar un usuario de tu mismo nivel o superior"))
+                .when(roleService).assertCanManage(null);
 
         assertThatThrownBy(() -> appUserService.updateRole(1L, 9L)).isInstanceOf(AccessDeniedException.class);
         verify(userRepository, never()).save(any());
