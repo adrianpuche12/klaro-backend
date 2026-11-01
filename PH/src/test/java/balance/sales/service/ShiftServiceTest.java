@@ -158,7 +158,7 @@ class ShiftServiceTest {
         Store store = buildStore(1L, "Danli");
         Shift shift = buildShift(1L, store, ShiftStatus.OPEN);
 
-        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(shift));
+        when(shiftRepository.findForUpdate(1L, TENANT_ID)).thenReturn(Optional.of(shift));
         when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ShiftResponseDTO result = shiftService.closeShift(1L);
@@ -169,7 +169,7 @@ class ShiftServiceTest {
 
     @Test
     void closeShift_throwsWhenShiftNotFound() {
-        when(shiftRepository.findByIdAndTenantId(99L, TENANT_ID)).thenReturn(Optional.empty());
+        when(shiftRepository.findForUpdate(99L, TENANT_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> shiftService.closeShift(99L))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -181,7 +181,7 @@ class ShiftServiceTest {
         Store store = buildStore(1L, "Danli");
         Shift shift = buildShift(1L, store, ShiftStatus.CLOSED);
 
-        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(shift));
+        when(shiftRepository.findForUpdate(1L, TENANT_ID)).thenReturn(Optional.of(shift));
 
         assertThatThrownBy(() -> shiftService.closeShift(1L))
                 .isInstanceOf(IllegalStateException.class)

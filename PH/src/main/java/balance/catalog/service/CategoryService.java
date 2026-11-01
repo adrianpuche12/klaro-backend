@@ -65,6 +65,14 @@ public class CategoryService {
         return dto;
     }
 
+    /** Local de la categoría dentro del tenant actual (para chequear permisos antes de operar). */
+    public Optional<Long> storeIdOf(Long id) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        return categoryRepository.findById(id)
+                .filter(c -> tenantId.equals(c.getTenantId()))
+                .map(c -> c.getStore().getId());
+    }
+
     public Optional<CategoryResponseDTO> findById(Long id) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         return categoryRepository.findById(id)
@@ -85,8 +93,10 @@ public class CategoryService {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         Store store = TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
 
+        // La categoría padre tiene que ser del mismo local (no solo de la misma empresa).
         Optional<Category> parent = categoryRepository.findById(parentId)
-                .filter(p -> tenantId.equals(p.getTenantId()));
+                .filter(p -> tenantId.equals(p.getTenantId()))
+                .filter(p -> p.getStore() != null && storeId.equals(p.getStore().getId()));
         if (parent.isEmpty()) return Optional.empty();
 
         Category category = buildCategory(dto, store, parent.get(), tenantId);
@@ -100,7 +110,10 @@ public class CategoryService {
                 .filter(c -> tenantId.equals(c.getTenantId()))
                 .map(category -> {
                     category.setName(dto.getName().trim());
-                    category.setDescription(dto.getDescription());
+                    // null = no se envió → se conserva; "" = el usuario la borró.
+                    if (dto.getDescription() != null) {
+                        category.setDescription(dto.getDescription().isBlank() ? null : dto.getDescription().trim());
+                    }
                     if (dto.getDisplayOrder() != null) category.setDisplayOrder(dto.getDisplayOrder());
                     return toDTO(categoryRepository.save(category));
                 });

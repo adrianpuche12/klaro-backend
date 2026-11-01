@@ -217,7 +217,7 @@ public class SalesService {
     public DailyClosingResponseDTO closeShift(Long shiftId, String username, String notes,
                                                BigDecimal openingCash, BigDecimal declaredCash) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
-        Shift shift = shiftRepository.findByIdAndTenantId(shiftId, tenantId)
+        Shift shift = shiftRepository.findForUpdate(shiftId, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
 
         if (ShiftStatus.CLOSED == shift.getStatus()) {

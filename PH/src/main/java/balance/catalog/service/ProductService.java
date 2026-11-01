@@ -46,6 +46,14 @@ public class ProductService {
         return products.stream().map(ProductResponseDTO::from).toList();
     }
 
+    /** Local del producto dentro del tenant actual (para chequear permisos antes de operar). */
+    public Optional<Long> storeIdOf(Long id) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        return productRepository.findById(id)
+                .filter(p -> tenantId.equals(p.getTenantId()))
+                .map(p -> p.getStore().getId());
+    }
+
     public Optional<ProductResponseDTO> findById(Long id) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         return productRepository.findById(id)
@@ -111,9 +119,9 @@ public class ProductService {
 
     private Product buildProduct(ProductRequestDTO dto, Store store, Long tenantId) {
         Product product = new Product();
-        applyDTO(product, dto);
         product.setStore(store);
         product.setTenantId(tenantId);
+        applyDTO(product, dto);
         product.setActive(true);
         return product;
     }
@@ -124,11 +132,20 @@ public class ProductService {
         product.setType(dto.getType() != null ? dto.getType() : "SIMPLE");
         product.setPrice(dto.getPrice());
         product.setMinStock(dto.getMinStock() != null ? dto.getMinStock() : 0);
-        product.setDescription(dto.getDescription());
+        // null = no se envió → se conserva; "" = el usuario la borró (antes un PUT sin el
+        // campo dejaba la descripción en null).
+        if (dto.getDescription() != null) {
+            product.setDescription(dto.getDescription().isBlank() ? null : dto.getDescription().trim());
+        }
 
         if (dto.getCategoryId() != null) {
-            categoryRepository.findById(dto.getCategoryId())
-                    .ifPresent(product::setCategory);
+            // La categoría tiene que ser de la misma empresa y del mismo local que el producto
+            // (antes se buscaba por id sin filtrar por tenant).
+            Long storeId = product.getStore() != null ? product.getStore().getId() : null;
+            product.setCategory(categoryRepository.findById(dto.getCategoryId())
+                    .filter(c -> product.getTenantId() == null || product.getTenantId().equals(c.getTenantId()))
+                    .filter(c -> storeId == null || (c.getStore() != null && storeId.equals(c.getStore().getId())))
+                    .orElseThrow(() -> new IllegalArgumentException("La categoría no existe en este local")));
         } else {
             product.setCategory(null);
         }

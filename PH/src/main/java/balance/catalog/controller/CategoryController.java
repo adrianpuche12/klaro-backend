@@ -33,6 +33,7 @@ public class CategoryController {
     // Detalle de una categorÃ­a
     @GetMapping("/api/v2/categories/{id}")
     public ResponseEntity<CategoryResponseDTO> getById(@PathVariable Long id) {
+        categoryService.storeIdOf(id).ifPresent(s -> permissionGuard.assertAccess(PermissionModule.CATALOG, s));
         return categoryService.findById(id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
@@ -42,6 +43,7 @@ public class CategoryController {
     @PostMapping("/api/v2/stores/{storeId}/categories")
     public ResponseEntity<CategoryResponseDTO> createRoot(@PathVariable Long storeId,
                                                            @Valid @RequestBody CategoryRequestDTO dto) {
+        permissionGuard.assertManage(PermissionModule.CATALOG, storeId);
         return categoryService.createRoot(storeId, dto)
                 .map(cat -> ResponseEntity.status(HttpStatus.CREATED).body(cat))
                 .orElse(ResponseEntity.notFound().build());
@@ -52,6 +54,7 @@ public class CategoryController {
     public ResponseEntity<CategoryResponseDTO> createChild(@PathVariable Long storeId,
                                                             @PathVariable Long parentId,
                                                             @Valid @RequestBody CategoryRequestDTO dto) {
+        permissionGuard.assertManage(PermissionModule.CATALOG, storeId);
         return categoryService.createChild(storeId, parentId, dto)
                 .map(cat -> ResponseEntity.status(HttpStatus.CREATED).body(cat))
                 .orElse(ResponseEntity.notFound().build());
@@ -61,6 +64,7 @@ public class CategoryController {
     @PutMapping("/api/v2/categories/{id}")
     public ResponseEntity<CategoryResponseDTO> update(@PathVariable Long id,
                                                        @Valid @RequestBody CategoryRequestDTO dto) {
+        categoryService.storeIdOf(id).ifPresent(s -> permissionGuard.assertManage(PermissionModule.CATALOG, s));
         return categoryService.update(id, dto)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
@@ -69,6 +73,7 @@ public class CategoryController {
     // Activar/desactivar categorÃ­a
     @PutMapping("/api/v2/categories/{id}/toggle")
     public ResponseEntity<CategoryResponseDTO> toggle(@PathVariable Long id) {
+        categoryService.storeIdOf(id).ifPresent(s -> permissionGuard.assertManage(PermissionModule.CATALOG, s));
         return categoryService.toggle(id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
@@ -77,6 +82,7 @@ public class CategoryController {
     // Eliminar categorÃ­a
     @DeleteMapping("/api/v2/categories/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
+        categoryService.storeIdOf(id).ifPresent(s -> permissionGuard.assertManage(PermissionModule.CATALOG, s));
         if (categoryService.delete(id)) {
             return ResponseEntity.noContent().build();
         }

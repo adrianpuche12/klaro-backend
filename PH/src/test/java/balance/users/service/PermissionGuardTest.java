@@ -310,4 +310,56 @@ class PermissionGuardTest {
 
         assertThat(permissionGuard.currentUsername()).isEqualTo("test.cajero");
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // assertManage: escritura de encargado (catálogo, salidas/ajustes de stock)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    @Test
+    void manage_staffWithModuleButNotManager_isDenied() {
+        // Caso real de DEV: "contador" tiene CATALOG e INVENTORY pero no gestiona usuarios.
+        TenantContext.setTenantId(TENANT_A);
+        authenticateAs(KEYCLOAK_ID);
+        Store store = buildStore(1L, TENANT_A);
+        when(userRepository.findByKeycloakIdAndTenantId(KEYCLOAK_ID, TENANT_A))
+                .thenReturn(Optional.of(userWithRole(Set.of("CATALOG", "INVENTORY"), false, Set.of(store))));
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_A)).thenReturn(Optional.of(store));
+
+        assertThatThrownBy(() -> permissionGuard.assertManage(PermissionModule.CATALOG, 1L))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void manage_managerWithModule_isAllowed() {
+        TenantContext.setTenantId(TENANT_A);
+        authenticateAs(KEYCLOAK_ID);
+        Store store = buildStore(1L, TENANT_A);
+        when(userRepository.findByKeycloakIdAndTenantId(KEYCLOAK_ID, TENANT_A))
+                .thenReturn(Optional.of(userWithRole(Set.of("CATALOG"), true, Set.of(store))));
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_A)).thenReturn(Optional.of(store));
+
+        assertThatCode(() -> permissionGuard.assertManage(PermissionModule.CATALOG, 1L)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void manage_managerWithoutModule_isDenied() {
+        TenantContext.setTenantId(TENANT_A);
+        authenticateAs(KEYCLOAK_ID);
+        Store store = buildStore(1L, TENANT_A);
+        when(userRepository.findByKeycloakIdAndTenantId(KEYCLOAK_ID, TENANT_A))
+                .thenReturn(Optional.of(userWithRole(Set.of("POS"), true, Set.of(store))));
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_A)).thenReturn(Optional.of(store));
+
+        assertThatThrownBy(() -> permissionGuard.assertManage(PermissionModule.CATALOG, 1L))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void manage_legacyUser_isAllowed() {
+        TenantContext.setTenantId(TENANT_A);
+        authenticateAs(KEYCLOAK_ID);
+        when(userRepository.findByKeycloakIdAndTenantId(KEYCLOAK_ID, TENANT_A)).thenReturn(Optional.of(legacyUser()));
+
+        assertThatCode(() -> permissionGuard.assertManage(PermissionModule.INVENTORY, 1L)).doesNotThrowAnyException();
+    }
 }

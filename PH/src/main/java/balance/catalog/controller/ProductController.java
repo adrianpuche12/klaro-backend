@@ -36,6 +36,7 @@ public class ProductController {
 
     @GetMapping("/api/v2/products/{id}")
     public ResponseEntity<ProductResponseDTO> getById(@PathVariable Long id) {
+        productService.storeIdOf(id).ifPresent(s -> permissionGuard.assertAccess(PermissionModule.CATALOG, s));
         return productService.findById(id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
@@ -44,6 +45,7 @@ public class ProductController {
     @PostMapping("/api/v2/stores/{storeId}/products")
     public ResponseEntity<?> create(@PathVariable Long storeId,
                                     @Valid @RequestBody ProductRequestDTO dto) {
+        permissionGuard.assertManage(PermissionModule.CATALOG, storeId);
         try {
             return productService.create(storeId, dto)
                     .map(p -> ResponseEntity.status(HttpStatus.CREATED).body(p))
@@ -56,6 +58,7 @@ public class ProductController {
     @PutMapping("/api/v2/products/{id}")
     public ResponseEntity<?> update(@PathVariable Long id,
                                      @Valid @RequestBody ProductRequestDTO dto) {
+        productService.storeIdOf(id).ifPresent(s -> permissionGuard.assertManage(PermissionModule.CATALOG, s));
         try {
             return productService.update(id, dto)
                     .map(ResponseEntity::ok)
@@ -67,6 +70,7 @@ public class ProductController {
 
     @PutMapping("/api/v2/products/{id}/toggle")
     public ResponseEntity<ProductResponseDTO> toggle(@PathVariable Long id) {
+        productService.storeIdOf(id).ifPresent(s -> permissionGuard.assertManage(PermissionModule.CATALOG, s));
         return productService.toggle(id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
@@ -74,6 +78,7 @@ public class ProductController {
 
     @DeleteMapping("/api/v2/products/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
+        productService.storeIdOf(id).ifPresent(s -> permissionGuard.assertManage(PermissionModule.CATALOG, s));
         if (productService.delete(id)) {
             return ResponseEntity.noContent().build();
         }
