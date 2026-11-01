@@ -41,6 +41,10 @@ public class SalesController {
     public ResponseEntity<?> createSale(@PathVariable Long shiftId,
                                          @Valid @RequestBody SaleRequestDTO request) {
         shiftAccess.assertCanOperate(shiftId);
+        String tokenUser = permissionGuard.currentUsername();
+        if (tokenUser != null) {
+            request.setUsername(tokenUser); // quien vende es quien está logueado, no lo que diga el body
+        }
         try {
             return ResponseEntity.ok(salesService.createSale(shiftId, request));
         } catch (IllegalArgumentException | IllegalStateException e) {
@@ -121,8 +125,9 @@ public class SalesController {
     public ResponseEntity<?> closeShift(@PathVariable Long shiftId,
                                          @RequestBody Map<String, Object> body) {
         shiftAccess.assertCanOperate(shiftId);
+        String tokenUser = permissionGuard.currentUsername();
         try {
-            String username = body.getOrDefault("username", "unknown").toString();
+            String username = tokenUser != null ? tokenUser : body.getOrDefault("username", "unknown").toString();
             String notes = body.get("notes") != null ? body.get("notes").toString() : null;
             BigDecimal openingCash = toBigDecimal(body.get("openingCash"));
             BigDecimal declaredCash = toBigDecimal(body.get("declaredCash"));

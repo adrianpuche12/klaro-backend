@@ -225,4 +225,63 @@ class ProductServiceTest {
         assertThat(result).hasSize(1);
         verify(productRepository).searchByStoreId(STORE_ID, "pollo");
     }
+
+    // ── Integridad del catálogo (permisos/tenant) ─────────────────────────────
+
+    private balance.catalog.model.Category category(Long id, Long tenantId, Long storeId) {
+        balance.catalog.model.Category c = new balance.catalog.model.Category();
+        c.setId(id);
+        c.setTenantId(tenantId);
+        Store s = new Store(); s.setId(storeId); s.setTenantId(tenantId);
+        c.setStore(s);
+        return c;
+    }
+
+    @Test
+    void update_rejectsCategoryFromAnotherStore() {
+        when(productRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(buildProduct()));
+        when(categoryRepository.findById(7L)).thenReturn(Optional.of(category(7L, TENANT_ID, 2L)));
+        ProductRequestDTO dto = buildRequest("Pollo", new BigDecimal("100.00"));
+        dto.setCategoryId(7L);
+
+        assertThatThrownBy(() -> productService.update(PRODUCT_ID, dto))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("categoría");
+        verify(productRepository, never()).save(any());
+    }
+
+    @Test
+    void update_rejectsCategoryFromAnotherTenant() {
+        when(productRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(buildProduct()));
+        when(categoryRepository.findById(7L)).thenReturn(Optional.of(category(7L, 99L, STORE_ID)));
+        ProductRequestDTO dto = buildRequest("Pollo", new BigDecimal("100.00"));
+        dto.setCategoryId(7L);
+
+        assertThatThrownBy(() -> productService.update(PRODUCT_ID, dto)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void update_keepsDescription_whenNotSent_andClearsIt_whenBlank() {
+        Product existing = buildProduct();
+        existing.setDescription("Entero, 2 kg");
+        when(productRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(existing));
+        when(productRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        productService.update(PRODUCT_ID, buildRequest("Pollo", new BigDecimal("100.00")));
+        assertThat(existing.getDescription()).isEqualTo("Entero, 2 kg");
+
+        ProductRequestDTO blank = buildRequest("Pollo", new BigDecimal("100.00"));
+        blank.setDescription("  ");
+        productService.update(PRODUCT_ID, blank);
+        assertThat(existing.getDescription()).isNull();
+    }
+
+    @Test
+    void storeIdOf_onlyWithinTenant() {
+        Product foreign = buildProduct();
+        foreign.setTenantId(99L);
+        when(productRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(foreign));
+
+        assertThat(productService.storeIdOf(PRODUCT_ID)).isEmpty();
+    }
 }

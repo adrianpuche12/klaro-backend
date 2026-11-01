@@ -194,5 +194,49 @@ class InventoryControllerTest {
         ReflectionTestUtils.setField(dto, "storeName",   "Danli");
         return dto;
     }
-}
 
+    // ── Permisos por tipo de movimiento + usuario del token ──────────────────
+
+    @Test
+    void adjust_entrada_onlyNeedsInventory() throws Exception {
+        when(inventoryService.adjust(eq(1L), any())).thenReturn(new StockItemDTO());
+        String body = objectMapper.writeValueAsString(Map.of("productId", 1, "type", "ENTRADA", "quantity", 5));
+
+        mockMvc.perform(post("/api/v2/stores/1/stock/adjustment")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        verify(permissionGuard).assertAccess(balance.users.model.PermissionModule.INVENTORY, 1L);
+        verify(permissionGuard, never()).assertManage(any(), any());
+    }
+
+    @Test
+    void adjust_salida_byNonManager_isForbidden_andStockIsNotTouched() throws Exception {
+        doThrow(new org.springframework.security.access.AccessDeniedException("Solo un encargado puede hacer esta operación"))
+                .when(permissionGuard).assertManage(balance.users.model.PermissionModule.INVENTORY, 1L);
+        String body = objectMapper.writeValueAsString(Map.of("productId", 1, "type", "SALIDA", "quantity", 5));
+
+        mockMvc.perform(post("/api/v2/stores/1/stock/adjustment")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isForbidden());
+
+        verify(inventoryService, never()).adjust(anyLong(), any());
+    }
+
+    @Test
+    void adjust_usesTheTokenUser_notTheBody() throws Exception {
+        when(permissionGuard.currentUsername()).thenReturn("test.cajero");
+        when(inventoryService.adjust(eq(1L), any())).thenReturn(new StockItemDTO());
+        String body = objectMapper.writeValueAsString(Map.of(
+                "productId", 1, "type", "ENTRADA", "quantity", 5, "username", "otro.usuario"));
+
+        mockMvc.perform(post("/api/v2/stores/1/stock/adjustment")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        org.mockito.ArgumentCaptor<balance.inventory.dto.StockAdjustmentDTO> captor =
+                org.mockito.ArgumentCaptor.forClass(balance.inventory.dto.StockAdjustmentDTO.class);
+        verify(inventoryService).adjust(eq(1L), captor.capture());
+        org.assertj.core.api.Assertions.assertThat(captor.getValue().getUsername()).isEqualTo("test.cajero");
+    }
+}

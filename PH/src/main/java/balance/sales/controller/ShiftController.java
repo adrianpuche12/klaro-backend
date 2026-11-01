@@ -38,8 +38,9 @@ public class ShiftController {
     public ResponseEntity<?> openShift(@PathVariable Long storeId,
                                         @RequestBody Map<String, String> body) {
         permissionGuard.assertAccess(PermissionModule.POS, storeId);
+        String tokenUser = permissionGuard.currentUsername();
         try {
-            String username = body.getOrDefault("username", "unknown");
+            String username = tokenUser != null ? tokenUser : body.getOrDefault("username", "unknown");
             return ResponseEntity.ok(shiftService.openShift(storeId, username));
         } catch (IllegalStateException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));

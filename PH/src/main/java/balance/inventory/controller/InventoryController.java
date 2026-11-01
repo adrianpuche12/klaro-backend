@@ -41,12 +41,22 @@ public class InventoryController {
         return ResponseEntity.ok(inventoryService.getSummary(storeId));
     }
 
-    // Solo admin puede crear ajustes manuales (SALIDA/AJUSTE); user solo ENTRADA
+    // ENTRADA: cualquiera con INVENTORY en el local. SALIDA/AJUSTE: solo un encargado
+    // (antes el comentario lo decía pero el código no lo validaba). El usuario del
+    // movimiento sale del token, no del body.
     @PostMapping("/stores/{storeId}/stock/adjustment")
     public ResponseEntity<?> adjust(@PathVariable Long storeId,
                                      @Valid @RequestBody StockAdjustmentDTO dto) {
-        try {
+        if ("ENTRADA".equals(dto.getType())) {
             permissionGuard.assertAccess(PermissionModule.INVENTORY, storeId);
+        } else {
+            permissionGuard.assertManage(PermissionModule.INVENTORY, storeId);
+        }
+        String tokenUser = permissionGuard.currentUsername();
+        if (tokenUser != null) {
+            dto.setUsername(tokenUser);
+        }
+        try {
             return ResponseEntity.ok(inventoryService.adjust(storeId, dto));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));

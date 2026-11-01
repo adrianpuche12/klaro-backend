@@ -118,6 +118,28 @@ public class PermissionGuard {
         }
     }
 
+    /**
+     * Escritura "de encargado" sobre un módulo con local: editar el catálogo, salidas y
+     * ajustes de stock. Igual que {@link #assertAccess(PermissionModule, Long)} y además
+     * exige un Role con canManageUsers (root y usuarios legacy pasan siempre). Es la misma
+     * regla que aplica el frontend (Revisión 04): el backend no puede ser más laxo que la UI.
+     */
+    public void assertManage(PermissionModule module, Long storeId) {
+        if (hasRealmRole("root")) {
+            return;
+        }
+        assertAccess(module, storeId);
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        Optional<AppUser> maybeUser = userRepository.findByKeycloakIdAndTenantId(currentKeycloakId(), tenantId);
+        if (isLegacy(maybeUser)) {
+            return;
+        }
+        Role role = maybeUser.get().getRole();
+        if (role == null || !role.isCanManageUsers()) {
+            throw new AccessDeniedException("Solo un encargado puede hacer esta operación");
+        }
+    }
+
     /** Qué turnos de un local puede leer el usuario actual. */
     public enum ShiftReadScope {
         /** Todos los turnos del local (historial completo). */

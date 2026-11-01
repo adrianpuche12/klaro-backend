@@ -48,7 +48,7 @@ public class ShiftService {
     @Transactional
     public ShiftResponseDTO closeShift(Long shiftId) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
-        Shift shift = shiftRepository.findByIdAndTenantId(shiftId, tenantId)
+        Shift shift = shiftRepository.findForUpdate(shiftId, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
         if (ShiftStatus.CLOSED == shift.getStatus()) {
             throw new IllegalStateException("El turno ya está cerrado");

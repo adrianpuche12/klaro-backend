@@ -411,7 +411,7 @@ class SalesServiceTest {
 
     @Test
     void closeShift_throwsWhenShiftAlreadyClosed() {
-        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.CLOSED)));
+        when(shiftRepository.findForUpdate(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.CLOSED)));
 
         assertThatThrownBy(() -> salesService.closeShift(1L, "admin", null, null, null))
                 .isInstanceOf(IllegalStateException.class)
@@ -420,7 +420,7 @@ class SalesServiceTest {
 
     @Test
     void closeShift_throwsWhenNoOpenSales() {
-        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
+        when(shiftRepository.findForUpdate(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
         when(saleRepository.findOpenByShiftIdAndTenantId(1L, TENANT_ID)).thenReturn(List.of());
 
         assertThatThrownBy(() -> salesService.closeShift(1L, "admin", null, null, null))
@@ -443,7 +443,7 @@ class SalesServiceTest {
         ClosingDeposit deposit = new ClosingDeposit();
         deposit.setId(10L);
 
-        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(shift));
+        when(shiftRepository.findForUpdate(1L, TENANT_ID)).thenReturn(Optional.of(shift));
         when(saleRepository.findOpenByShiftIdAndTenantId(1L, TENANT_ID)).thenReturn(List.of(sale1, sale2));
         when(formsService.saveClosingDeposit(any())).thenReturn(deposit);
         when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -467,7 +467,7 @@ class SalesServiceTest {
         sale.setStore(buildStore(1L, "Danli"));
         sale.setTenantId(TENANT_ID);
 
-        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(shift));
+        when(shiftRepository.findForUpdate(1L, TENANT_ID)).thenReturn(Optional.of(shift));
         when(saleRepository.findOpenByShiftIdAndTenantId(1L, TENANT_ID)).thenReturn(List.of(sale));
         when(formsService.saveClosingDeposit(any())).thenReturn(new ClosingDeposit());
         when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -486,7 +486,7 @@ class SalesServiceTest {
         sale.setStore(buildStore(1L, "Danli"));
         sale.setTenantId(TENANT_ID);
 
-        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(shift));
+        when(shiftRepository.findForUpdate(1L, TENANT_ID)).thenReturn(Optional.of(shift));
         when(saleRepository.findOpenByShiftIdAndTenantId(1L, TENANT_ID)).thenReturn(List.of(sale));
         when(formsService.saveClosingDeposit(any())).thenReturn(new ClosingDeposit());
         when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -509,7 +509,7 @@ class SalesServiceTest {
         sale.setStore(buildStore(1L, "Danli"));
         sale.setTenantId(TENANT_ID);
 
-        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(shift));
+        when(shiftRepository.findForUpdate(1L, TENANT_ID)).thenReturn(Optional.of(shift));
         when(saleRepository.findOpenByShiftIdAndTenantId(1L, TENANT_ID)).thenReturn(List.of(sale));
         when(formsService.saveClosingDeposit(any())).thenReturn(new ClosingDeposit());
         when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -533,7 +533,7 @@ class SalesServiceTest {
         sale.setStore(buildStore(1L, "Danli"));
         sale.setTenantId(TENANT_ID);
 
-        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(shift));
+        when(shiftRepository.findForUpdate(1L, TENANT_ID)).thenReturn(Optional.of(shift));
         when(saleRepository.findOpenByShiftIdAndTenantId(1L, TENANT_ID)).thenReturn(List.of(sale));
         when(formsService.saveClosingDeposit(any())).thenReturn(new ClosingDeposit());
         when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
