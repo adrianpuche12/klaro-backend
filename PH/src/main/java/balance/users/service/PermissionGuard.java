@@ -118,6 +118,77 @@ public class PermissionGuard {
         }
     }
 
+    /** Qué turnos de un local puede leer el usuario actual. */
+    public enum ShiftReadScope {
+        /** Todos los turnos del local (historial completo). */
+        ALL,
+        /** Solo los turnos que abrió él (más el turno abierto del local, ver ShiftAccessService). */
+        OWN
+    }
+
+    /**
+     * Alcance de lectura de turnos/ventas de un local.
+     * <ul>
+     *   <li>root (Keycloak) o usuario legacy: {@link ShiftReadScope#ALL}.</li>
+     *   <li>Staff con canManageUsers y módulo SALES_HISTORY: ALL (pantalla "Historial ventas" del panel).</li>
+     *   <li>Cualquier otro staff con POS o SALES_HISTORY en ese local: {@link ShiftReadScope#OWN}
+     *       ("Mis ventas" del cajero). Un cajero nunca ve los turnos ni los montos de otro.</li>
+     *   <li>Sin esos módulos, o local fuera de sus locales permitidos: 403.</li>
+     * </ul>
+     */
+    public ShiftReadScope shiftReadScope(Long storeId) {
+        if (hasRealmRole("root")) {
+            return ShiftReadScope.ALL;
+        }
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        String keycloakId = currentKeycloakId();
+
+        Optional<AppUser> maybeUser = userRepository.findByKeycloakIdAndTenantId(keycloakId, tenantId);
+        if (isLegacy(maybeUser)) {
+            return ShiftReadScope.ALL;
+        }
+        AppUser user = maybeUser.get();
+
+        if (storeId == null) {
+            throw new AccessDeniedException("Debés especificar un local");
+        }
+        Store store = storeRepository.findByIdAndTenantId(storeId, tenantId)
+                .orElseThrow(() -> new AccessDeniedException("Acceso denegado"));
+        boolean storeAllowed = user.getAccessibleStores().stream()
+                .anyMatch(s -> s.getId().equals(store.getId()));
+        if (!storeAllowed) {
+            throw new AccessDeniedException("No tenés acceso a este local");
+        }
+
+        Set<String> granted = effectivePermissions(user);
+        boolean manager = user.getRole() != null && user.getRole().isCanManageUsers();
+        if (manager && granted.contains(PermissionModule.SALES_HISTORY.name())) {
+            return ShiftReadScope.ALL;
+        }
+        if (granted.contains(PermissionModule.POS.name()) || granted.contains(PermissionModule.SALES_HISTORY.name())) {
+            return ShiftReadScope.OWN;
+        }
+        throw new AccessDeniedException("No tenés acceso a este módulo");
+    }
+
+    /** Usuario del token (preferred_username): fuente confiable, a diferencia de un campo del body. */
+    public String currentUsername() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof Jwt jwt) {
+            String username = jwt.getClaimAsString("preferred_username");
+            if (username != null && !username.isBlank()) {
+                return username;
+            }
+        }
+        throw new AccessDeniedException("No autenticado");
+    }
+
+    private boolean hasRealmRole(String role) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && auth.getAuthorities().stream()
+                .anyMatch(a -> ("ROLE_" + role).equals(a.getAuthority()));
+    }
+
     /** SPRINT-14: el Role es la fuente de verdad de permisos si está asignado.
      * {@link AppUser#getPermissions()} (SPRINT-09) queda como fallback deprecado
      * para usuarios que todavía no tengan Role (no debería pasar tras la

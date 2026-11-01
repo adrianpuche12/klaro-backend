@@ -221,4 +221,93 @@ class PermissionGuardTest {
         assertThatThrownBy(() -> permissionGuard.assertAccess(PermissionModule.INVENTORY, 1L))
                 .isInstanceOf(SecurityException.class);
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Alcance de lectura de turnos (un cajero nunca ve turnos de otro)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    private AppUser userWithRole(Set<String> permissions, boolean canManageUsers, Set<Store> stores) {
+        AppUser u = new AppUser();
+        u.setId(3L);
+        u.setKeycloakId(KEYCLOAK_ID);
+        u.setTenantId(TENANT_A);
+        u.setStatus(AppUserStatus.ACTIVE);
+        balance.users.model.Role role = new balance.users.model.Role();
+        role.setPermissions(new java.util.HashSet<>(permissions));
+        role.setCanManageUsers(canManageUsers);
+        u.setRole(role);
+        u.setAccessibleStores(stores);
+        return u;
+    }
+
+    @Test
+    void shiftScope_legacyUser_seesAll() {
+        TenantContext.setTenantId(TENANT_A);
+        authenticateAs(KEYCLOAK_ID);
+        when(userRepository.findByKeycloakIdAndTenantId(KEYCLOAK_ID, TENANT_A)).thenReturn(Optional.of(legacyUser()));
+
+        assertThat(permissionGuard.shiftReadScope(1L)).isEqualTo(PermissionGuard.ShiftReadScope.ALL);
+    }
+
+    @Test
+    void shiftScope_managerWithSalesHistory_seesAll() {
+        TenantContext.setTenantId(TENANT_A);
+        authenticateAs(KEYCLOAK_ID);
+        Store store = buildStore(1L, TENANT_A);
+        when(userRepository.findByKeycloakIdAndTenantId(KEYCLOAK_ID, TENANT_A))
+                .thenReturn(Optional.of(userWithRole(Set.of("SALES_HISTORY", "POS"), true, Set.of(store))));
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_A)).thenReturn(Optional.of(store));
+
+        assertThat(permissionGuard.shiftReadScope(1L)).isEqualTo(PermissionGuard.ShiftReadScope.ALL);
+    }
+
+    @Test
+    void shiftScope_cashierWithSalesHistory_seesOnlyOwn() {
+        // Caso real de DEV: el rol "Cajero" tiene POS + SALES_HISTORY y no gestiona usuarios.
+        TenantContext.setTenantId(TENANT_A);
+        authenticateAs(KEYCLOAK_ID);
+        Store store = buildStore(1L, TENANT_A);
+        when(userRepository.findByKeycloakIdAndTenantId(KEYCLOAK_ID, TENANT_A))
+                .thenReturn(Optional.of(userWithRole(Set.of("SALES_HISTORY", "POS"), false, Set.of(store))));
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_A)).thenReturn(Optional.of(store));
+
+        assertThat(permissionGuard.shiftReadScope(1L)).isEqualTo(PermissionGuard.ShiftReadScope.OWN);
+    }
+
+    @Test
+    void shiftScope_withoutPosOrSalesHistory_isDenied() {
+        TenantContext.setTenantId(TENANT_A);
+        authenticateAs(KEYCLOAK_ID);
+        Store store = buildStore(1L, TENANT_A);
+        when(userRepository.findByKeycloakIdAndTenantId(KEYCLOAK_ID, TENANT_A))
+                .thenReturn(Optional.of(userWithRole(Set.of("INVENTORY", "CATALOG"), false, Set.of(store))));
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_A)).thenReturn(Optional.of(store));
+
+        assertThatThrownBy(() -> permissionGuard.shiftReadScope(1L)).isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void shiftScope_storeNotAccessible_isDenied() {
+        TenantContext.setTenantId(TENANT_A);
+        authenticateAs(KEYCLOAK_ID);
+        Store mine = buildStore(1L, TENANT_A);
+        Store other = buildStore(2L, TENANT_A);
+        when(userRepository.findByKeycloakIdAndTenantId(KEYCLOAK_ID, TENANT_A))
+                .thenReturn(Optional.of(userWithRole(Set.of("SALES_HISTORY", "POS"), true, Set.of(mine))));
+        when(storeRepository.findByIdAndTenantId(2L, TENANT_A)).thenReturn(Optional.of(other));
+
+        assertThatThrownBy(() -> permissionGuard.shiftReadScope(2L)).isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void currentUsername_comesFromTheToken() {
+        Jwt jwt = Jwt.withTokenValue("token").header("alg", "none")
+                .subject(KEYCLOAK_ID).claim("preferred_username", "test.cajero")
+                .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(60)).build();
+        var auth = new TestingAuthenticationToken(jwt, null);
+        auth.setAuthenticated(true);
+        SecurityContextHolder.getContext().setAuthentication(auth);
+
+        assertThat(permissionGuard.currentUsername()).isEqualTo("test.cajero");
+    }
 }

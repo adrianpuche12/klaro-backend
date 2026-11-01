@@ -28,6 +28,8 @@ class ShiftControllerTest {
     @Autowired private ObjectMapper objectMapper;
 
     @MockBean private ShiftService shiftService;
+    @MockBean private balance.users.service.PermissionGuard permissionGuard;
+    @MockBean private balance.sales.service.ShiftAccessService shiftAccess;
 
     // â”€â”€ POST /api/v2/stores/{storeId}/shifts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -170,5 +172,63 @@ class ShiftControllerTest {
         ReflectionTestUtils.setField(dto, "storeName", "Danli");
         return dto;
     }
-}
 
+    // ── Permisos por rol (prioridad #1) ──────────────────────────────────────
+
+    @Test
+    void history_cashier_getsOnlyOwnShifts_evenIfAsksForAnotherUser() throws Exception {
+        when(permissionGuard.shiftReadScope(1L)).thenReturn(balance.users.service.PermissionGuard.ShiftReadScope.OWN);
+        when(permissionGuard.currentUsername()).thenReturn("test.cajero");
+        when(shiftService.getShiftHistoryByUser(1L, "test.cajero", 0, 20)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v2/stores/1/shifts").param("username", "otra.cajera"))
+                .andExpect(status().isOk());
+
+        verify(shiftService).getShiftHistoryByUser(1L, "test.cajero", 0, 20);
+        verify(shiftService, never()).getShiftHistory(anyLong(), anyInt(), anyInt());
+    }
+
+    @Test
+    void history_manager_canFilterByUsername() throws Exception {
+        when(permissionGuard.shiftReadScope(1L)).thenReturn(balance.users.service.PermissionGuard.ShiftReadScope.ALL);
+        when(shiftService.getShiftHistoryByUser(1L, "otra.cajera", 0, 20)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v2/stores/1/shifts").param("username", "otra.cajera"))
+                .andExpect(status().isOk());
+
+        verify(shiftService).getShiftHistoryByUser(1L, "otra.cajera", 0, 20);
+    }
+
+    @Test
+    void history_manager_withoutFilter_getsAll() throws Exception {
+        when(permissionGuard.shiftReadScope(1L)).thenReturn(balance.users.service.PermissionGuard.ShiftReadScope.ALL);
+        when(shiftService.getShiftHistory(1L, 0, 20)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v2/stores/1/shifts")).andExpect(status().isOk());
+
+        verify(shiftService).getShiftHistory(1L, 0, 20);
+    }
+
+    @Test
+    void openShift_withoutPos_isForbidden_andDoesNotOpen() throws Exception {
+        doThrow(new org.springframework.security.access.AccessDeniedException("No tenés acceso a este módulo"))
+                .when(permissionGuard).assertAccess(balance.users.model.PermissionModule.POS, 1L);
+
+        mockMvc.perform(post("/api/v2/stores/1/shifts")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("username", "contador"))))
+                .andExpect(status().isForbidden());
+
+        verify(shiftService, never()).openShift(anyLong(), any());
+    }
+
+    @Test
+    void getById_checksReadAccess() throws Exception {
+        doThrow(new org.springframework.security.access.AccessDeniedException("No tenés acceso a este turno"))
+                .when(shiftAccess).assertCanRead(5L);
+
+        mockMvc.perform(get("/api/v2/shifts/5")).andExpect(status().isForbidden());
+
+        verify(shiftService, never()).getById(anyLong());
+    }
+}

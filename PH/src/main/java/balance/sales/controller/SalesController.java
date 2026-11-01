@@ -2,6 +2,7 @@ package balance.sales.controller;
 
 import balance.sales.dto.*;
 import balance.sales.service.SalesService;
+import balance.sales.service.ShiftAccessService;
 import balance.sales.service.ShiftExpenseService;
 import balance.users.model.PermissionModule;
 import balance.users.service.PermissionGuard;
@@ -30,10 +31,16 @@ public class SalesController {
     @Autowired
     private ShiftExpenseService shiftExpenseService;
 
+    // Permisos por turno/venta (POS para operar; alcance de lectura para consultar).
+    // Siempre FUERA de los try/catch: AccessDeniedException debe terminar en 403.
+    @Autowired
+    private ShiftAccessService shiftAccess;
+
     // Registrar venta en un turno
     @PostMapping("/shifts/{shiftId}/sales")
     public ResponseEntity<?> createSale(@PathVariable Long shiftId,
                                          @Valid @RequestBody SaleRequestDTO request) {
+        shiftAccess.assertCanOperate(shiftId);
         try {
             return ResponseEntity.ok(salesService.createSale(shiftId, request));
         } catch (IllegalArgumentException | IllegalStateException e) {
@@ -44,12 +51,14 @@ public class SalesController {
     // Listar ventas de un turno
     @GetMapping("/shifts/{shiftId}/sales")
     public ResponseEntity<List<SaleResponseDTO>> getSalesByShift(@PathVariable Long shiftId) {
+        shiftAccess.assertCanRead(shiftId);
         return ResponseEntity.ok(salesService.getSalesByShift(shiftId));
     }
 
     // Detalle de una venta
     @GetMapping("/sales/{saleId}")
     public ResponseEntity<?> getSale(@PathVariable Long saleId) {
+        shiftAccess.assertCanReadSale(saleId);
         try {
             return ResponseEntity.ok(salesService.getSaleById(saleId));
         } catch (IllegalArgumentException e) {
@@ -60,6 +69,7 @@ public class SalesController {
     // Cancelar venta (revierte stock)
     @DeleteMapping("/sales/{saleId}")
     public ResponseEntity<?> cancelSale(@PathVariable Long saleId) {
+        shiftAccess.assertCanOperateSale(saleId);
         try {
             salesService.cancelSale(saleId);
             return ResponseEntity.noContent().build();
@@ -71,6 +81,7 @@ public class SalesController {
     // Resumen del turno (para vista de cierre)
     @GetMapping("/shifts/{shiftId}/summary")
     public ResponseEntity<?> getSummary(@PathVariable Long shiftId) {
+        shiftAccess.assertCanRead(shiftId);
         try {
             return ResponseEntity.ok(salesService.getDailySummary(shiftId));
         } catch (IllegalArgumentException e) {
@@ -109,6 +120,7 @@ public class SalesController {
     @PostMapping("/shifts/{shiftId}/closing")
     public ResponseEntity<?> closeShift(@PathVariable Long shiftId,
                                          @RequestBody Map<String, Object> body) {
+        shiftAccess.assertCanOperate(shiftId);
         try {
             String username = body.getOrDefault("username", "unknown").toString();
             String notes = body.get("notes") != null ? body.get("notes").toString() : null;
@@ -129,6 +141,7 @@ public class SalesController {
     @PostMapping("/shifts/{shiftId}/expenses")
     public ResponseEntity<?> addExpense(@PathVariable Long shiftId,
                                          @Valid @RequestBody ShiftExpenseRequestDTO request) {
+        shiftAccess.assertCanOperate(shiftId);
         try {
             return ResponseEntity.ok(shiftExpenseService.addExpense(shiftId, request));
         } catch (IllegalArgumentException | IllegalStateException e) {
@@ -138,6 +151,7 @@ public class SalesController {
 
     @GetMapping("/shifts/{shiftId}/expenses")
     public ResponseEntity<List<ShiftExpenseResponseDTO>> getExpenses(@PathVariable Long shiftId) {
+        shiftAccess.assertCanRead(shiftId);
         return ResponseEntity.ok(shiftExpenseService.getExpensesForShift(shiftId));
     }
 }

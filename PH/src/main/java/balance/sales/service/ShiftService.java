@@ -75,6 +75,15 @@ public class ShiftService {
                 .stream().map(ShiftResponseDTO::from).toList();
     }
 
+    /** Historial de un local solo con los turnos que abrió {@code username}. */
+    public List<ShiftResponseDTO> getShiftHistoryByUser(Long storeId, String username, int page, int size) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
+        return shiftRepository.findByStoreIdAndTenantIdAndUsernameIgnoreCaseOrderByOpenedAtDesc(
+                storeId, tenantId, username, PageRequest.of(page, size))
+                .stream().map(ShiftResponseDTO::from).toList();
+    }
+
     public ShiftResponseDTO getById(Long shiftId) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         return shiftRepository.findByIdAndTenantId(shiftId, tenantId)
