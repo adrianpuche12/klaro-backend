@@ -53,7 +53,7 @@ public class FormsController {
     public ResponseEntity<ClosingDeposit> addClosingDeposit(
             @Valid @RequestBody ClosingDeposit deposit) {
         assertOperationsAccess();
-        return ResponseEntity.ok(formsService.saveClosingDeposit(deposit));
+        return ResponseEntity.ok(formsService.createClosingDeposit(deposit));
     }
 
     /**

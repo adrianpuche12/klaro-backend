@@ -1,6 +1,7 @@
 package balance.service;
 
 import balance.model.Transaction;
+import balance.repository.StoreRepository;
 import balance.repository.TransactionRepository;
 import balance.tenant.context.TenantSecurityUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,10 +16,17 @@ import java.util.Optional;
 public class BalanceService {
 
     @Autowired private TransactionRepository transactionRepository;
+    @Autowired private StoreRepository storeRepository;
 
     public Transaction saveTransaction(Transaction transaction) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         transaction.setTenantId(tenantId);
+        // El local tiene que ser de esta empresa (las FK no pasan por RLS: sin esto se podía
+        // asociar una transacción al local de otra empresa, en el alta y en la edición).
+        if (transaction.getStore() != null && transaction.getStore().getId() != null) {
+            transaction.setStore(TenantSecurityUtils.requireStore(
+                    transaction.getStore().getId(), tenantId, storeRepository));
+        }
         return transactionRepository.save(transaction);
     }
 
