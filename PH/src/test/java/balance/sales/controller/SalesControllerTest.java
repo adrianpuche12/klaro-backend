@@ -34,6 +34,7 @@ class SalesControllerTest {
     @MockBean private SalesService        salesService;
     @MockBean private PermissionGuard     permissionGuard;
     @MockBean private ShiftExpenseService shiftExpenseService;
+    @MockBean private balance.sales.service.ShiftAccessService shiftAccess;
 
     // â”€â”€ POST /api/v2/shifts/{shiftId}/sales â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -305,5 +306,39 @@ class SalesControllerTest {
         ReflectionTestUtils.setField(dto, "items",    List.of());
         return dto;
     }
-}
 
+    // ── Permisos por rol (prioridad #1) ──────────────────────────────────────
+
+    @Test
+    void createSale_withoutPos_isForbidden_andNoSaleIsCreated() throws Exception {
+        doThrow(new org.springframework.security.access.AccessDeniedException("No tenés acceso a este módulo"))
+                .when(shiftAccess).assertCanOperate(1L);
+
+        mockMvc.perform(post("/api/v2/shifts/1/sales")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"contador\",\"items\":[{\"productId\":1,\"quantity\":1}]}"))
+                .andExpect(status().isForbidden());
+
+        verify(salesService, never()).createSale(anyLong(), any());
+    }
+
+    @Test
+    void summary_ofAnotherCashiersShift_isForbidden() throws Exception {
+        doThrow(new org.springframework.security.access.AccessDeniedException("No tenés acceso a este turno"))
+                .when(shiftAccess).assertCanRead(5L);
+
+        mockMvc.perform(get("/api/v2/shifts/5/summary")).andExpect(status().isForbidden());
+
+        verify(salesService, never()).getDailySummary(anyLong());
+    }
+
+    @Test
+    void cancelSale_checksPosOnTheSalesShift() throws Exception {
+        doThrow(new org.springframework.security.access.AccessDeniedException("No tenés acceso a este módulo"))
+                .when(shiftAccess).assertCanOperateSale(77L);
+
+        mockMvc.perform(delete("/api/v2/sales/77")).andExpect(status().isForbidden());
+
+        verify(salesService, never()).cancelSale(anyLong());
+    }
+}
