@@ -1,5 +1,7 @@
 package balance.service;
 
+import org.junit.jupiter.api.BeforeEach;
+import balance.tenant.service.TenantConfigService;
 import balance.dto.GastoAdminRequestDTO;
 import balance.dto.GastoAdminResponseDTO;
 import balance.model.*;
@@ -32,6 +34,14 @@ class FormsServiceTest {
     @Mock private ClosingDepositRepository   closingDepositRepository;
     @Mock private SupplierPaymentRepository  supplierPaymentRepository;
     @Mock private SalaryPaymentRepository    salaryPaymentRepository;
+    @Mock private TenantConfigService tenantConfigService;
+
+    /** "Hoy" de la empresa: lo resuelve TenantConfigService (zona horaria del tenant). */
+    @BeforeEach
+    void stubTenantToday() {
+        org.mockito.Mockito.lenient().when(tenantConfigService.today()).thenReturn(LocalDate.now());
+    }
+
 
     @BeforeEach void setTenant()   { TenantContext.setTenantId(TENANT_ID); }
     @AfterEach  void clearTenant() { TenantContext.clear(); }

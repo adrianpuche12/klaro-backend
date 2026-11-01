@@ -1,5 +1,6 @@
 package balance.operations.controller;
 
+import balance.tenant.service.TenantConfigService;
 import balance.operations.dto.OperationDTO;
 import balance.operations.dto.OperationSummaryDTO;
 import balance.operations.service.OperationsV3Service;
@@ -24,6 +25,7 @@ public class OperationsV3Controller {
 
     @Autowired private OperationsV3Service operationsService;
     @Autowired private ReportService        reportService;
+    @Autowired private TenantConfigService tenantConfigService;
     @Autowired private PermissionGuard      permissionGuard;
 
     /**
@@ -43,7 +45,7 @@ public class OperationsV3Controller {
         permissionGuard.assertAccess(PermissionModule.OPERATIONS, storeId);
 
         // Defaults: último mes si no se especifica rango
-        LocalDate effectiveTo   = to   != null ? to   : LocalDate.now();
+        LocalDate effectiveTo   = to   != null ? to   : tenantConfigService.today();
         LocalDate effectiveFrom = from != null ? from : effectiveTo.minusMonths(1);
 
         return ResponseEntity.ok(
@@ -62,7 +64,7 @@ public class OperationsV3Controller {
 
         permissionGuard.assertAccess(PermissionModule.OPERATIONS, storeId);
 
-        LocalDate effectiveTo   = to   != null ? to   : LocalDate.now();
+        LocalDate effectiveTo   = to   != null ? to   : tenantConfigService.today();
         LocalDate effectiveFrom = from != null ? from : effectiveTo.minusMonths(1);
 
         return ResponseEntity.ok(operationsService.getSummary(effectiveFrom, effectiveTo, storeId));
@@ -85,7 +87,7 @@ public class OperationsV3Controller {
         // genérico que ese catch usa para errores de generación de reporte.
         permissionGuard.assertAccess(PermissionModule.OPERATIONS, storeId);
 
-        LocalDate effectiveTo   = to   != null ? to   : LocalDate.now();
+        LocalDate effectiveTo   = to   != null ? to   : tenantConfigService.today();
         LocalDate effectiveFrom = from != null ? from : effectiveTo.minusMonths(1);
 
         String filename = "reporte-" + effectiveFrom + "-al-" + effectiveTo;

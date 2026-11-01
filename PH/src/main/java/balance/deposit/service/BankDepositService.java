@@ -1,5 +1,6 @@
 package balance.deposit.service;
 
+import balance.tenant.service.TenantConfigService;
 import balance.deposit.dto.BankDepositRequestDTO;
 import balance.deposit.dto.BankDepositResponseDTO;
 import balance.deposit.dto.BankDepositUpdateDTO;
@@ -30,6 +31,7 @@ public class BankDepositService {
 
     @Autowired private BankDepositRepository     bankDepositRepository;
     @Autowired private ClosingDepositRepository  closingDepositRepository;
+    @Autowired private TenantConfigService tenantConfigService;
     @Autowired private StoreRepository           storeRepository;
 
     @Transactional(readOnly = true)
@@ -56,7 +58,7 @@ public class BankDepositService {
         BankDeposit deposit = new BankDeposit();
         deposit.setTenantId(tenantId);
         deposit.setStore(store);
-        deposit.setDepositDate(dto.getDepositDate() != null ? dto.getDepositDate() : LocalDate.now());
+        deposit.setDepositDate(dto.getDepositDate() != null ? dto.getDepositDate() : tenantConfigService.today());
         deposit.setDeclaredAmount(dto.getDeclaredAmount());
         deposit.setNotes(dto.getNotes());
         deposit.setImageUri(dto.getImageUri());

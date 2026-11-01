@@ -1,5 +1,6 @@
 package balance.dashboard.service;
 
+import balance.tenant.service.TenantConfigService;
 import balance.catalog.repository.ProductRepository;
 import balance.common.enums.SaleStatus;
 import balance.common.enums.ShiftStatus;
@@ -44,6 +45,14 @@ class DashboardServiceTest {
     @Mock private SaleRepository           saleRepository;
     @Mock private InventoryStockRepository stockRepository;
     @Mock private ProductRepository        productRepository;
+    @Mock private TenantConfigService tenantConfigService;
+
+    /** "Hoy" de la empresa: lo resuelve TenantConfigService (zona horaria del tenant). */
+    @BeforeEach
+    void stubTenantToday() {
+        org.mockito.Mockito.lenient().when(tenantConfigService.today()).thenReturn(LocalDate.now());
+    }
+
 
     @BeforeEach
     void setTenant() {

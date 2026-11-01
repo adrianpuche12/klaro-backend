@@ -9,6 +9,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.DateTimeException;
+import java.time.LocalDate;
+import java.time.ZoneId;
 
 @Service
 public class TenantConfigService {
@@ -40,12 +43,30 @@ public class TenantConfigService {
         return TenantConfigDTO.from(configRepository.save(config));
     }
 
-    /** Devuelve la zona horaria del tenant, con fallback a Honduras. */
+    /** Zona horaria de la empresa actual; si no la configuró, una neutra (UTC), nunca la de un cliente. */
     public String getTimezone() {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         return configRepository.findById(tenantId)
                 .map(TenantConfig::getTimezone)
-                .orElse("America/Tegucigalpa");
+                .filter(tz -> !tz.isBlank())
+                .orElse(TenantConfig.DEFAULT_TIMEZONE);
+    }
+
+    /** {@link #getTimezone()} como ZoneId. Una zona inválida guardada cae en la neutra en vez de romper el request. */
+    public ZoneId zoneId() {
+        try {
+            return ZoneId.of(getTimezone());
+        } catch (DateTimeException e) {
+            return ZoneId.of(TenantConfig.DEFAULT_TIMEZONE);
+        }
+    }
+
+    /**
+     * Fecha de HOY para la empresa actual, en su zona horaria. Usar para toda fecha de negocio
+     * (cierres, depósitos, pagos, rangos por defecto), nunca LocalDate.now() del servidor.
+     */
+    public LocalDate today() {
+        return LocalDate.now(zoneId());
     }
 
     /** Fracción de recargo por tarjeta del tenant actual, o ZERO si no está configurada -- SPRINT-12. */

@@ -1,5 +1,7 @@
 package balance.sales.service;
 
+import java.time.LocalDate;
+import balance.tenant.service.TenantConfigService;
 import balance.common.enums.ShiftStatus;
 import balance.model.Store;
 import balance.repository.StoreRepository;
@@ -30,6 +32,14 @@ class ShiftServiceTest {
 
     @Mock private ShiftRepository shiftRepository;
     @Mock private StoreRepository storeRepository;
+    @Mock private TenantConfigService tenantConfigService;
+
+    /** "Hoy" de la empresa: lo resuelve TenantConfigService (zona horaria del tenant). */
+    @BeforeEach
+    void stubTenantToday() {
+        org.mockito.Mockito.lenient().when(tenantConfigService.today()).thenReturn(LocalDate.now());
+    }
+
 
     @BeforeEach
     void setTenantContext() {
