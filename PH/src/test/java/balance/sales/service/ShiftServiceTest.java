@@ -38,6 +38,7 @@ class ShiftServiceTest {
     @BeforeEach
     void stubTenantToday() {
         org.mockito.Mockito.lenient().when(tenantConfigService.today()).thenReturn(LocalDate.now());
+        org.mockito.Mockito.lenient().when(tenantConfigService.zoneId()).thenReturn(java.time.ZoneId.of("UTC"));
     }
 
 
