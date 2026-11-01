@@ -11,6 +11,8 @@ import balance.tenant.repository.TenantRepository;
 import balance.users.model.AppUser;
 import balance.users.repository.AppUserRepository;
 import balance.users.service.KeycloakAdminService;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -20,6 +22,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.DateTimeException;
 import java.time.ZoneId;
+import java.util.function.Supplier;
 
 /**
  * Alta completa de una empresa nueva, en un solo paso (SPRINT-16). Solo la usa el administrador de plataforma.
@@ -31,7 +34,9 @@ import java.time.ZoneId;
  *   <li>Como el tenant nuevo: crea la fila de {@code app_users} del dueño (RLS solo acepta filas del tenant de la sesión).</li>
  * </ol>
  *
- * Cada paso abre su propia transacción ({@code REQUIRES_NEW}): la conexión toma el tenant al hacer checkout del pool.
+ * Cada paso corre en su propia transacción ({@code REQUIRES_NEW}) y fija el tenant EXPLÍCITAMENTE sobre la conexión
+ * que esté usando ({@link #inTenant}). No alcanza con el checkout del pool: con open-in-view (activo en el servidor)
+ * el request reusa la misma conexión en todos los pasos — bug encontrado en DEV el 01-Nov-2026.
  * Si algo falla después del paso 1, se deshace todo (usuario de Keycloak incluido) y se relanza el error.
  */
 @Service
@@ -45,6 +50,9 @@ public class TenantOnboardingService {
     private final AppUserRepository appUserRepository;
     private final KeycloakAdminService keycloakAdminService;
     private final TransactionTemplate newTx;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     public TenantOnboardingService(TenantRepository tenantRepository,
                                    TenantConfigRepository tenantConfigRepository,
@@ -72,7 +80,7 @@ public class TenantOnboardingService {
         }
 
         // 1. Empresa + configuración, como plataforma.
-        Tenant tenant = TenantContext.runAs(TenantContext.PLATFORM_TENANT_ID, () -> newTx.execute(status -> {
+        Tenant tenant = inTenant(TenantContext.PLATFORM_TENANT_ID, () -> {
             if (tenantRepository.existsBySlug(slug)) {
                 throw new IllegalArgumentException("Ya existe una empresa con el slug: " + slug);
             }
@@ -92,7 +100,7 @@ public class TenantOnboardingService {
             config.setPhone(blankToNull(dto.getPhone()));
             tenantConfigRepository.save(config);
             return saved;
-        }));
+        });
 
         String keycloakId = null;
         try {
@@ -102,7 +110,7 @@ public class TenantOnboardingService {
 
             // 3. Fila del dueño en app_users, como el tenant nuevo.
             final String kcId = keycloakId;
-            TenantContext.runAs(tenant.getId(), () -> newTx.execute(status -> {
+            inTenant(tenant.getId(), () -> {
                 AppUser root = new AppUser();
                 root.setKeycloakId(kcId);
                 root.setUsername(rootUsername);
@@ -110,7 +118,7 @@ public class TenantOnboardingService {
                 root.setStatus(AppUserStatus.ACTIVE);
                 root.setTenantId(tenant.getId());
                 return appUserRepository.save(root);
-            }));
+            });
 
             log.info("Empresa creada: id={} slug={} dueño={}", tenant.getId(), slug, rootUsername);
             return new OnboardingResult(TenantResponseDTO.from(tenant), rootUsername);
@@ -131,14 +139,41 @@ public class TenantOnboardingService {
             }
         }
         try {
-            TenantContext.runAs(TenantContext.PLATFORM_TENANT_ID, () -> newTx.execute(status -> {
+            inTenant(TenantContext.PLATFORM_TENANT_ID, () -> {
                 tenantConfigRepository.deleteById(tenantId);
                 tenantRepository.deleteById(tenantId);
                 return null;
-            }));
+            });
         } catch (RuntimeException e) {
             log.error("No se pudo borrar la empresa {} del alta fallida", tenantId, e);
         }
+    }
+
+    /**
+     * Ejecuta {@code action} en una transacción nueva con {@code tenantId}: lo pone en TenantContext y lo fija sobre
+     * la conexión de esa transacción. Al terminar deja la conexión con el tenant que tenía el request.
+     */
+    private <T> T inTenant(long tenantId, Supplier<T> action) {
+        Long previous = TenantContext.getTenantId();
+        try {
+            return TenantContext.runAs(tenantId, () -> newTx.execute(status -> {
+                setConnectionTenant(tenantId);
+                return action.get();
+            }));
+        } finally {
+            if (previous != null && previous != tenantId) {
+                TenantContext.runAs(previous, () -> newTx.execute(status -> {
+                    setConnectionTenant(previous);
+                    return null;
+                }));
+            }
+        }
+    }
+
+    private void setConnectionTenant(long tenantId) {
+        entityManager.createNativeQuery("SELECT set_config('app.tenant_id', :tenant, false)")
+                .setParameter("tenant", Long.toString(tenantId))
+                .getSingleResult();
     }
 
     private static String blankToNull(String value) {
