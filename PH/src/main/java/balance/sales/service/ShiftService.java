@@ -1,5 +1,6 @@
 package balance.sales.service;
 
+import balance.tenant.service.TenantConfigService;
 import balance.common.enums.ShiftStatus;
 import balance.model.Store;
 import balance.repository.StoreRepository;
@@ -23,6 +24,7 @@ public class ShiftService {
 
     @Autowired private ShiftRepository shiftRepository;
     @Autowired private StoreRepository storeRepository;
+    @Autowired private TenantConfigService tenantConfigService;
 
     @Transactional
     public ShiftResponseDTO openShift(Long storeId, String username) {
@@ -81,7 +83,7 @@ public class ShiftService {
     }
 
     private String generateCode(Store store) {
-        String date = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String date = tenantConfigService.today().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         String time = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmm"));
         String storePart = store.getName()
                 .replaceAll("[^a-zA-Z]", "")

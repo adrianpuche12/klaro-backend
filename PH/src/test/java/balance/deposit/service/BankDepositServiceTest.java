@@ -1,5 +1,6 @@
 package balance.deposit.service;
 
+import balance.tenant.service.TenantConfigService;
 import balance.deposit.dto.BankDepositRequestDTO;
 import balance.deposit.dto.BankDepositResponseDTO;
 import balance.deposit.dto.BankDepositUpdateDTO;
@@ -50,6 +51,14 @@ class BankDepositServiceTest {
     @Mock private BankDepositRepository    bankDepositRepository;
     @Mock private ClosingDepositRepository closingDepositRepository;
     @Mock private StoreRepository          storeRepository;
+    @Mock private TenantConfigService tenantConfigService;
+
+    /** "Hoy" de la empresa: lo resuelve TenantConfigService (zona horaria del tenant). */
+    @BeforeEach
+    void stubTenantToday() {
+        org.mockito.Mockito.lenient().when(tenantConfigService.today()).thenReturn(LocalDate.now());
+    }
+
 
     @AfterEach
     void clearContext() {

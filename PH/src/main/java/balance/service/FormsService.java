@@ -1,5 +1,6 @@
 package balance.service;
 
+import balance.tenant.service.TenantConfigService;
 import balance.dto.AllOperationsDTO;
 import balance.dto.GastoAdminRequestDTO;
 import balance.dto.GastoAdminResponseDTO;
@@ -23,6 +24,7 @@ public class FormsService {
 
     @Autowired private GastoAdminRepository      gastoAdminRepository;
     @Autowired private TransactionRepository      transactionRepository;
+    @Autowired private TenantConfigService tenantConfigService;
     @Autowired private StoreRepository            storeRepository;
     @Autowired private ClosingDepositRepository   closingDepositRepository;
     @Autowired private SupplierPaymentRepository  supplierPaymentRepository;
@@ -102,7 +104,7 @@ public class FormsService {
     /** Usado internamente por SalesService — el tenantId ya viene seteado en el objeto. */
     @Transactional
     public ClosingDeposit saveClosingDeposit(ClosingDeposit deposit) {
-        if (deposit.getDepositDate() == null) deposit.setDepositDate(LocalDate.now());
+        if (deposit.getDepositDate() == null) deposit.setDepositDate(tenantConfigService.today());
         return closingDepositRepository.save(deposit);
     }
 
@@ -158,7 +160,7 @@ public class FormsService {
     @Transactional
     public SupplierPayment saveSupplierPayment(SupplierPayment payment) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
-        if (payment.getPaymentDate() == null) payment.setPaymentDate(LocalDate.now());
+        if (payment.getPaymentDate() == null) payment.setPaymentDate(tenantConfigService.today());
         payment.setTenantId(tenantId);
         return supplierPaymentRepository.save(payment);
     }
@@ -207,7 +209,7 @@ public class FormsService {
     @Transactional
     public SalaryPayment saveSalaryPayment(SalaryPayment payment) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
-        if (payment.getSalaryDate() == null) payment.setSalaryDate(LocalDate.now());
+        if (payment.getSalaryDate() == null) payment.setSalaryDate(tenantConfigService.today());
         payment.setTenantId(tenantId);
         return salaryPaymentRepository.save(payment);
     }

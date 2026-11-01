@@ -1,5 +1,6 @@
 package balance.dashboard.service;
 
+import balance.tenant.service.TenantConfigService;
 import balance.catalog.repository.ProductRepository;
 import balance.dashboard.dto.DashboardDTO;
 import balance.dashboard.dto.StoreDashboardDTO;
@@ -27,9 +28,9 @@ import java.util.stream.Collectors;
 @Service
 public class DashboardService {
 
-    private static final ZoneId HONDURAS_TZ = ZoneId.of("America/Tegucigalpa");
 
     @Autowired private StoreRepository          storeRepository;
+    @Autowired private TenantConfigService tenantConfigService;
     @Autowired private ShiftRepository          shiftRepository;
     @Autowired private SaleRepository           saleRepository;
     @Autowired private InventoryStockRepository stockRepository;
@@ -38,7 +39,7 @@ public class DashboardService {
     @Transactional(readOnly = true)
     public DashboardDTO getDashboard() {
         Long tenantId = TenantSecurityUtils.requireTenantId();
-        LocalDate today = LocalDate.now(HONDURAS_TZ);
+        LocalDate today = tenantConfigService.today();
 
         List<Store> activeStores = storeRepository.findByTenantIdAndActive(tenantId, true);
 

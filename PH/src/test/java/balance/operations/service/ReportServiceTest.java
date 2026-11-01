@@ -31,7 +31,10 @@ class ReportServiceTest {
     @Mock    private OperationsV3Service     operationsService;
     @Mock    private TenantConfigService     tenantConfigService;
 
-    @BeforeEach void setTenant()   { TenantContext.setTenantId(TENANT_ID); }
+    @BeforeEach void setTenant()   {
+        TenantContext.setTenantId(TENANT_ID);
+        org.mockito.Mockito.lenient().when(tenantConfigService.today()).thenReturn(LocalDate.now());
+    }
     @AfterEach  void clearTenant() { TenantContext.clear(); }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

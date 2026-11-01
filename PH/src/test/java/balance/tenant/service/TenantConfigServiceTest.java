@@ -82,7 +82,25 @@ class TenantConfigServiceTest {
         TenantConfig existing = buildConfig("Klaro", "L", null);
         when(configRepository.findById(TENANT_ID)).thenReturn(Optional.of(existing));
 
-        assertThat(tenantConfigService.getTimezone()).isEqualTo("America/Tegucigalpa");
+        // Neutra (UTC), nunca la zona de un cliente en particular.
+        assertThat(tenantConfigService.getTimezone()).isEqualTo("UTC");
+    }
+
+    @Test
+    void today_usesTheTenantTimezone_notTheServer() {
+        // Kiribati (UTC+14) y Samoa Americana (UTC-11): siempre en días distintos.
+        when(configRepository.findById(TENANT_ID)).thenReturn(Optional.of(buildConfig("X", "USD", "Pacific/Kiritimati")));
+        java.time.LocalDate kiritimati = tenantConfigService.today();
+        when(configRepository.findById(TENANT_ID)).thenReturn(Optional.of(buildConfig("X", "USD", "Pacific/Pago_Pago")));
+        java.time.LocalDate pagoPago = tenantConfigService.today();
+        assertThat(kiritimati).isAfter(pagoPago);
+        assertThat(kiritimati).isEqualTo(java.time.LocalDate.now(java.time.ZoneId.of("Pacific/Kiritimati")));
+    }
+
+    @Test
+    void zoneId_fallsBackToUtc_whenStoredTimezoneIsInvalid() {
+        when(configRepository.findById(TENANT_ID)).thenReturn(Optional.of(buildConfig("X", "USD", "Marte/Olympus")));
+        assertThat(tenantConfigService.zoneId()).isEqualTo(java.time.ZoneId.of("UTC"));
     }
 
     // ── updateConfig ──────────────────────────────────────────────────────────

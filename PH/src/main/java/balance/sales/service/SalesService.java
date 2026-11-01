@@ -39,7 +39,6 @@ import java.util.*;
 public class SalesService {
 
     private static final Logger log = LoggerFactory.getLogger(SalesService.class);
-    private static final ZoneId HONDURAS_TZ = ZoneId.of("America/Tegucigalpa");
     private static final BigDecimal ISV_RATE = BigDecimal.ZERO;
 
     @Autowired private SaleRepository saleRepository;
@@ -191,7 +190,7 @@ public class SalesService {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         Store store = TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
         List<Sale> sales = saleRepository.findByStoreIdAndTenantIdAndDateRange(storeId, tenantId, from, to);
-        return buildSummary(sales, store, from != null ? from : LocalDate.now(HONDURAS_TZ));
+        return buildSummary(sales, store, from != null ? from : tenantConfigService.today());
     }
 
     public DailySummaryDTO getDailySummary(Long shiftId) {
@@ -199,7 +198,7 @@ public class SalesService {
         Shift shift = shiftRepository.findByIdAndTenantId(shiftId, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
         List<Sale> sales = saleRepository.findByShiftIdAndTenantIdOrderByCreatedAtDesc(shiftId, tenantId);
-        return buildSummary(sales, shift.getStore(), LocalDate.now(HONDURAS_TZ));
+        return buildSummary(sales, shift.getStore(), tenantConfigService.today());
     }
 
     public Map<String, Object> getCashSummary(Long storeId, LocalDate from, LocalDate to) {
@@ -236,9 +235,9 @@ public class SalesService {
         ClosingDeposit deposit = new ClosingDeposit();
         deposit.setAmount(totalAmount);
         deposit.setClosingsCount(openSales.size());
-        deposit.setDepositDate(LocalDate.now(HONDURAS_TZ));
-        deposit.setPeriodStart(LocalDate.now(HONDURAS_TZ));
-        deposit.setPeriodEnd(LocalDate.now(HONDURAS_TZ));
+        deposit.setDepositDate(tenantConfigService.today());
+        deposit.setPeriodStart(tenantConfigService.today());
+        deposit.setPeriodEnd(tenantConfigService.today());
         deposit.setUsername(username);
         deposit.setStore(shift.getStore());
         deposit.setTenantId(tenantId);
@@ -276,7 +275,7 @@ public class SalesService {
         }
 
         return new DailyClosingResponseDTO(
-                shift.getId(), shift.getCode(), LocalDate.now(HONDURAS_TZ),
+                shift.getId(), shift.getCode(), tenantConfigService.today(),
                 shift.getStore().getId(), shift.getStore().getName(),
                 openSales.size(), totalAmount, saved.getId(), reconciliation);
     }

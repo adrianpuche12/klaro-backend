@@ -1,5 +1,6 @@
 package balance.operations.controller;
 
+import balance.tenant.service.TenantConfigService;
 import balance.config.TestSecurityConfig;
 import balance.operations.dto.OperationDTO;
 import balance.operations.dto.OperationSummaryDTO;
@@ -39,6 +40,12 @@ class OperationsV3ControllerTest {
     @MockBean OperationsV3Service operationsService;
     @MockBean ReportService       reportService;
     @MockBean PermissionGuard     permissionGuard;
+    @MockBean TenantConfigService tenantConfigService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void stubTenantToday() {
+        org.mockito.Mockito.when(tenantConfigService.today()).thenReturn(LocalDate.now());
+    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

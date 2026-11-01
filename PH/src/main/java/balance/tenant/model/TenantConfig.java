@@ -16,11 +16,15 @@ public class TenantConfig {
     @Column(name = "tenant_id")
     private Long tenantId;
 
+    /** Sin default de ningún cliente: el alta de empresa la exige (SPRINT-16). */
     @Column(length = 3)
-    private String currency = "HNL";
+    private String currency;
+
+    /** Zona horaria neutra si la empresa todavía no configuró la suya (nunca la de un cliente). */
+    public static final String DEFAULT_TIMEZONE = "UTC";
 
     @Column(length = 50)
-    private String timezone = "America/Tegucigalpa";
+    private String timezone = DEFAULT_TIMEZONE;
 
     @Column(name = "company_name", length = 200)
     private String companyName;

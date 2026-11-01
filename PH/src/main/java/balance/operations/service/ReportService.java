@@ -36,7 +36,7 @@ public class ReportService {
     public byte[] generatePDF(LocalDate from, LocalDate to, String typeFilter, Long storeId) throws IOException {
         List<OperationDTO> operations = operationsService.getAllForExport(from, to, typeFilter, storeId);
         var config   = tenantConfigService.getConfig();
-        String currency = config.getCurrency()    != null ? config.getCurrency()    : "L";
+        String currency = config.getCurrency() != null ? config.getCurrency() : "";
         String company  = config.getCompanyName() != null ? config.getCompanyName() : "Klaro";
 
         ByteArrayOutputStream baos   = new ByteArrayOutputStream();
@@ -47,7 +47,7 @@ public class ReportService {
         doc.add(new Paragraph("Reporte de Operaciones").setFontSize(14).setTextAlignment(TextAlignment.CENTER));
         doc.add(new Paragraph("Período: " + fmt(from) + " al " + fmt(to))
                 .setFontSize(10).setFontColor(ColorConstants.GRAY).setTextAlignment(TextAlignment.CENTER));
-        doc.add(new Paragraph("Generado: " + LocalDate.now().format(DATE_FMT))
+        doc.add(new Paragraph("Generado: " + tenantConfigService.today().format(DATE_FMT))
                 .setFontSize(9).setFontColor(ColorConstants.GRAY).setTextAlignment(TextAlignment.CENTER));
         doc.add(new Paragraph("\n"));
 
@@ -87,7 +87,7 @@ public class ReportService {
     public byte[] generateExcel(LocalDate from, LocalDate to, String typeFilter, Long storeId) throws IOException {
         List<OperationDTO> operations = operationsService.getAllForExport(from, to, typeFilter, storeId);
         var    config   = tenantConfigService.getConfig();
-        String currency = config.getCurrency() != null ? config.getCurrency() : "L";
+        String currency = config.getCurrency() != null ? config.getCurrency() : "";
 
         try (XSSFWorkbook workbook = new XSSFWorkbook()) {
             Sheet sheet = workbook.createSheet("Operaciones");
