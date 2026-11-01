@@ -100,6 +100,10 @@ public class AppUserService {
     public AppUserResponseDTO updateRole(Long id, Long roleId) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         AppUser user = findOrThrow(id);
+        // Primero el Role ACTUAL: antes solo se validaba el nuevo, y un encargado podía
+        // cambiarle el rol a un par, al dueño (cuenta sin Role) o a sí mismo. Con esto rige
+        // la misma cascada de niveles que en crear/suspender/reasignar/resetear clave.
+        roleService.assertCanManage(user.getRole());
         Role targetRole = roleId != null ? roleService.findOrThrow(roleId, tenantId) : null;
         roleService.assertCanManage(targetRole);
         user.setRole(targetRole);
