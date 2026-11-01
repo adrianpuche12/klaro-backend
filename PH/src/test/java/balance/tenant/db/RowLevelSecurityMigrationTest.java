@@ -26,6 +26,7 @@ class RowLevelSecurityMigrationTest {
 
     @Test
     void v11_backfillsTenantIdFromParentRows() throws SQLException {
+        exec("DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
         flyway("10").migrate();
 
         exec("""
@@ -48,6 +49,27 @@ class RowLevelSecurityMigrationTest {
         assertThat(count("SELECT count(*) FROM role_permissions rp JOIN roles r ON r.id = rp.role_id "
                 + "WHERE rp.tenant_id <> r.tenant_id")).isZero();
         assertThat(count("SELECT count(*) FROM role_permissions WHERE tenant_id IS NULL")).isZero();
+    }
+
+    /**
+     * V12 sobre una base como DEV: la empresa 1 opera sin fila en tenants. La migración se la crea con slug
+     * "tenant_1" (mismo prefijo que R2 ya usa) y el nombre de su configuración, y la secuencia sigue después.
+     */
+    @Test
+    void v12_createsMissingTenantRows_andAdvancesSequence() throws SQLException {
+        exec("DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
+        flyway("11").migrate();
+        exec("""
+            INSERT INTO store (id, tenant_id, name, active) VALUES (10, 1, 'Local', true), (11, 1, 'Otro', true);
+            INSERT INTO tenant_config (tenant_id, company_name, currency, timezone) VALUES (1, 'Mi Empresa', 'USD', 'America/Lima');
+            """);
+
+        flyway(null).migrate();
+
+        assertThat(count("SELECT count(*) FROM tenants WHERE id = 1 AND slug = 'tenant_1' AND name = 'Mi Empresa' AND active")).isEqualTo(1);
+        assertThat(count("SELECT count(*) FROM tenants")).isEqualTo(1);
+        exec("INSERT INTO tenants (slug, name, plan, active) VALUES ('nueva', 'Nueva', 'starter', true)");
+        assertThat(count("SELECT id FROM tenants WHERE slug = 'nueva'")).isEqualTo(2);
     }
 
     private static Flyway flyway(String target) {
