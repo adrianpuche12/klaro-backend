@@ -35,6 +35,12 @@ jobs:
     needs: test
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    # Un solo deploy por rama a la vez, y el más nuevo cancela al anterior. Sin esto, varios
+    # merges seguidos publican la misma etiqueta (dev-latest / latest) en paralelo y gana el
+    # que TERMINA último, que puede ser un commit viejo (pasó el 01-Nov con #22/#23/#24).
+    concurrency:
+      group: deploy-${{ github.ref_name }}
+      cancel-in-progress: true
 
     steps:
       - name: Checkout código
