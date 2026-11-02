@@ -7,6 +7,7 @@ import balance.operations.service.OperationsV3Service;
 import balance.operations.service.ReportService;
 import balance.users.model.PermissionModule;
 import balance.users.service.PermissionGuard;
+import balance.reports.ReportFormat;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ContentDisposition;
@@ -90,27 +91,14 @@ public class OperationsV3Controller {
         LocalDate effectiveTo   = to   != null ? to   : tenantConfigService.today();
         LocalDate effectiveFrom = from != null ? from : effectiveTo.minusMonths(1);
 
-        String filename = "reporte-" + effectiveFrom + "-al-" + effectiveTo;
-
+        ReportFormat fmt = ReportFormat.parse(format);
+        String filename = "operaciones-" + effectiveFrom + "-al-" + effectiveTo + "." + fmt.extension();
         try {
-            return switch (format.toUpperCase()) {
-                case "EXCEL" -> {
-                    byte[] data = reportService.generateExcel(effectiveFrom, effectiveTo, type, storeId);
-                    yield buildResponse(data, filename + ".xlsx",
-                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-                }
-                case "CSV" -> {
-                    byte[] data = reportService.generateCSV(effectiveFrom, effectiveTo, type, storeId);
-                    yield buildResponse(data, filename + ".csv", "text/csv");
-                }
-                default -> { // PDF
-                    byte[] data = reportService.generatePDF(effectiveFrom, effectiveTo, type, storeId);
-                    yield buildResponse(data, filename + ".pdf", "application/pdf");
-                }
-            };
+            byte[] data = reportService.exportOperations(effectiveFrom, effectiveTo, type, storeId, fmt);
+            return buildResponse(data, filename, fmt.contentType());
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
-                    .body(("Error generando reporte: " + e.getMessage()).getBytes());
+                    .body(("Error generando el informe: " + e.getMessage()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
         }
     }
 
