@@ -173,7 +173,7 @@ class OperationsV3ControllerTest {
 
     @Test
     void export_PDF_returns200WithCorrectContentType() throws Exception {
-        when(reportService.generatePDF(any(), any(), any(), any()))
+        when(reportService.exportOperations(any(), any(), any(), any(), eq(balance.reports.ReportFormat.PDF)))
                 .thenReturn(new byte[]{37, 80, 68, 70}); // %PDF
 
         mockMvc.perform(get("/api/v3/operations/export")
@@ -187,7 +187,7 @@ class OperationsV3ControllerTest {
 
     @Test
     void export_CSV_returns200WithCorrectContentType() throws Exception {
-        when(reportService.generateCSV(any(), any(), any(), any()))
+        when(reportService.exportOperations(any(), any(), any(), any(), eq(balance.reports.ReportFormat.CSV)))
                 .thenReturn("ID,Tipo\n1,SALE\n".getBytes());
 
         mockMvc.perform(get("/api/v3/operations/export")
@@ -199,7 +199,7 @@ class OperationsV3ControllerTest {
 
     @Test
     void export_EXCEL_returns200() throws Exception {
-        when(reportService.generateExcel(any(), any(), any(), any()))
+        when(reportService.exportOperations(any(), any(), any(), any(), eq(balance.reports.ReportFormat.EXCEL)))
                 .thenReturn(new byte[]{80, 75, 3, 4}); // PK (xlsx/zip)
 
         mockMvc.perform(get("/api/v3/operations/export")
@@ -210,7 +210,7 @@ class OperationsV3ControllerTest {
 
     @Test
     void export_whenServiceThrows_returns500() throws Exception {
-        when(reportService.generatePDF(any(), any(), any(), any()))
+        when(reportService.exportOperations(any(), any(), any(), any(), eq(balance.reports.ReportFormat.PDF)))
                 .thenThrow(new RuntimeException("Error generando PDF"));
 
         mockMvc.perform(get("/api/v3/operations/export").param("format", "PDF"))
