@@ -6,6 +6,8 @@ import balance.users.model.PermissionModule;
 import balance.users.service.PermissionGuard;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import balance.common.exception.ConflictException;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -57,6 +59,9 @@ public class InventoryController {
         }
         try {
             return ResponseEntity.ok(inventoryService.adjust(storeId, dto));
+        } catch (ConflictException e) {
+            // Stock insuficiente para la salida (descuento atómico, ver InventoryService.adjust).
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }

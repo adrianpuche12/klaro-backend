@@ -2,6 +2,7 @@ package balance.sales.service;
 
 import balance.catalog.model.Product;
 import balance.catalog.repository.ProductRepository;
+import balance.common.exception.ConflictException;
 import balance.common.enums.SaleStatus;
 import balance.common.enums.ShiftStatus;
 import balance.inventory.dto.StockAdjustmentDTO;
@@ -14,6 +15,8 @@ import balance.sales.model.Sale;
 import balance.sales.model.SaleItem;
 import balance.sales.model.Shift;
 import balance.sales.model.ShiftReconciliation;
+import balance.sales.model.IdempotencyKey;
+import balance.sales.repository.IdempotencyKeyRepository;
 import balance.sales.repository.SaleRepository;
 import balance.sales.repository.ShiftReconciliationRepository;
 import balance.sales.repository.ShiftRepository;
@@ -23,6 +26,8 @@ import balance.tenant.context.TenantSecurityUtils;
 import balance.tenant.service.TenantConfigService;
 import balance.users.model.PermissionModule;
 import balance.users.service.PermissionGuard;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,6 +36,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.*;
@@ -39,7 +47,6 @@ import java.util.*;
 public class SalesService {
 
     private static final Logger log = LoggerFactory.getLogger(SalesService.class);
-    private static final BigDecimal ISV_RATE = BigDecimal.ZERO;
 
     @Autowired private SaleRepository saleRepository;
     @Autowired private ShiftRepository shiftRepository;
@@ -52,34 +59,42 @@ public class SalesService {
     @Autowired private PermissionGuard permissionGuard;
     @Autowired private ShiftExpenseService shiftExpenseService;
     @Autowired private ShiftReconciliationRepository shiftReconciliationRepository;
+    @Autowired private IdempotencyKeyRepository idempotencyKeyRepository;
+    @Autowired private ObjectMapper objectMapper;
 
-    @Transactional
-    public SaleResponseDTO createSale(Long shiftId, SaleRequestDTO request) {
-        Long tenantId = TenantSecurityUtils.requireTenantId();
+    /** Máximo largo aceptado para el header Idempotency-Key (un UUID tiene 36). */
+    static final int MAX_IDEMPOTENCY_KEY_LENGTH = 100;
 
-        Shift shift = shiftRepository.findByIdAndTenantId(shiftId, tenantId)
-                .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
+    // ── Precio de una venta: UN solo cálculo para cotizar y para cobrar ──────────
 
-        if (ShiftStatus.CLOSED == shift.getStatus()) {
-            throw new IllegalStateException("El turno ya está cerrado");
+    /** Ítem con precio calculado. */
+    record PricedLine(Product product, int quantity, BigDecimal unitPrice, BigDecimal subtotal, BigDecimal tax) {}
+
+    /** Venta con precio calculado por el backend (ítems + impuestos + recargo + reparto del pago). */
+    record PricedSale(List<PricedLine> lines, BigDecimal subtotal, BigDecimal tax,
+                      BigDecimal surchargeRate, PaymentSplit payment) {}
+
+    /**
+     * Calcula el precio de la venta desde los ítems: precio del catálogo x cantidad, impuestos
+     * de la empresa, recargo por tarjeta de tenant_config y reparto del pago. Lo usan
+     * {@link #quote} y {@link #createSale}: el total cotizado es el total cobrado.
+     * El cliente nunca decide montos: en MIXED solo propone el reparto y tiene que cuadrar.
+     */
+    private PricedSale price(Long tenantId, Store store, SaleRequestDTO request) {
+        if (request.getItems() == null || request.getItems().isEmpty()) {
+            throw new IllegalArgumentException("La venta debe tener al menos un producto");
         }
-
-        Store store = shift.getStore();
-        permissionGuard.assertAccess(PermissionModule.POS, store.getId());
-
-        Sale sale = new Sale();
-        sale.setShift(shift);
-        sale.setStore(store);
-        sale.setUsername(request.getUsername());
-        ZoneId tz = ZoneId.of(tenantConfigService.getTimezone());
-        sale.setSaleDate(LocalDate.now(tz));
-        sale.setStatus(SaleStatus.OPEN);
-        sale.setTenantId(tenantId);
-
+        List<PricedLine> lines = new ArrayList<>();
         BigDecimal subtotal = BigDecimal.ZERO;
         BigDecimal totalTax = BigDecimal.ZERO;
 
         for (SaleItemRequestDTO itemReq : request.getItems()) {
+            if (itemReq.getProductId() == null) {
+                throw new IllegalArgumentException("El producto es obligatorio");
+            }
+            if (itemReq.getQuantity() == null || itemReq.getQuantity() < 1) {
+                throw new IllegalArgumentException("La cantidad debe ser al menos 1");
+            }
             Product product = productRepository.findById(itemReq.getProductId())
                     .filter(p -> tenantId.equals(p.getTenantId()))
                     .orElseThrow(() -> new IllegalArgumentException(
@@ -97,64 +112,172 @@ public class SalesService {
 
             BigDecimal itemSubtotal = product.getPrice()
                     .multiply(BigDecimal.valueOf(itemReq.getQuantity()))
-                    .setScale(2, RoundingMode.HALF_UP);
+                    .setScale(PaymentSplit.MONEY_SCALE, RoundingMode.HALF_UP);
 
-            // Calcular impuesto dinámico del tenant para este producto
+            // Impuesto dinámico de la empresa para este producto
             BigDecimal itemTax = taxService.calculateTax(tenantId, product, itemSubtotal);
+            if (itemTax == null) itemTax = BigDecimal.ZERO;
 
-            SaleItem item = new SaleItem();
-            item.setSale(sale);
-            item.setProduct(product);
-            item.setProductNameSnapshot(product.getName());
-            item.setUnitPriceSnapshot(product.getPrice());
-            item.setQuantity(itemReq.getQuantity());
-            item.setSubtotal(itemSubtotal);
-
-            sale.getItems().add(item);
+            lines.add(new PricedLine(product, itemReq.getQuantity(), product.getPrice(), itemSubtotal, itemTax));
             subtotal = subtotal.add(itemSubtotal);
             totalTax = totalTax.add(itemTax);
         }
 
-        BigDecimal total = subtotal.add(totalTax); // base, antes de recargo por tarjeta
-        sale.setSubtotal(subtotal);
-        sale.setIsv(totalTax);   // "isv" almacena el impuesto calculado dinámicamente
-
-        // Recargo por tarjeta (SPRINT-12): configurable por tenant, se aplica
-        // solo sobre la porción pagada con tarjeta -- nunca sobre la de efectivo.
+        // Recargo por tarjeta (SPRINT-12): configurable por tenant, se aplica solo sobre la
+        // porción pagada con tarjeta -- nunca sobre la de efectivo.
         BigDecimal surchargeRate = tenantConfigService.getCardSurchargeRate();
-        String paymentMethod = request.getPaymentMethod() != null ? request.getPaymentMethod() : "CASH";
-        sale.setPaymentMethod(paymentMethod);
-        switch (paymentMethod) {
-            case "CARD":
-                BigDecimal cardTotal = applyCardSurcharge(total, surchargeRate);
-                sale.setCashAmount(BigDecimal.ZERO);
-                sale.setCardAmount(cardTotal);
-                total = cardTotal;
-                break;
-            case "MIXED":
-                BigDecimal cash = request.getCashAmount() != null ? request.getCashAmount() : BigDecimal.ZERO;
-                BigDecimal cardBase = request.getCardAmount() != null ? request.getCardAmount() : BigDecimal.ZERO;
-                BigDecimal cardAmount = applyCardSurcharge(cardBase, surchargeRate);
-                sale.setCashAmount(cash);
-                sale.setCardAmount(cardAmount);
-                total = cash.add(cardAmount);
-                break;
-            default:
-                sale.setCashAmount(total);
-                sale.setCardAmount(BigDecimal.ZERO);
-                break;
+        PaymentSplit payment = PaymentSplit.of(request.getPaymentMethod(), subtotal.add(totalTax), surchargeRate,
+                request.getCashAmount(), request.getCardAmount());
+        return new PricedSale(lines, subtotal, totalTax, surchargeRate, payment);
+    }
+
+    /** Turno del tenant, abierto, y con permiso POS en su local (mismo control para cotizar y vender). */
+    private Shift requireOpenShiftForPos(Long tenantId, Long shiftId) {
+        Shift shift = shiftRepository.findByIdAndTenantId(shiftId, tenantId)
+                .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
+
+        if (ShiftStatus.CLOSED == shift.getStatus()) {
+            throw new IllegalStateException("El turno ya está cerrado");
         }
-        sale.setTotal(total);
+        permissionGuard.assertAccess(PermissionModule.POS, shift.getStore().getId());
+        return shift;
+    }
+
+    /**
+     * Cotiza una venta sin registrar nada (POST /shifts/{id}/sales/quote): mismo cálculo,
+     * mismas validaciones y mismos permisos que {@link #createSale}.
+     */
+    @Transactional(readOnly = true)
+    public SaleQuoteDTO quote(Long shiftId, SaleRequestDTO request) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        Shift shift = requireOpenShiftForPos(tenantId, shiftId);
+        PricedSale priced = price(tenantId, shift.getStore(), request);
+        PaymentSplit p = priced.payment();
+        List<SaleQuoteDTO.Line> lines = priced.lines().stream()
+                .map(l -> new SaleQuoteDTO.Line(l.product().getId(), l.product().getName(), l.quantity(),
+                        l.unitPrice(), l.subtotal(), l.tax()))
+                .toList();
+        return new SaleQuoteDTO(priced.subtotal(), priced.tax(), priced.subtotal().add(priced.tax()),
+                priced.surchargeRate(), p.surcharge(), p.total(), p.paymentMethod(),
+                p.cashAmount(), p.cardBaseAmount(), p.cardAmount(), lines);
+    }
+
+    @Transactional
+    public SaleResponseDTO createSale(Long shiftId, SaleRequestDTO request) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        Shift shift = requireOpenShiftForPos(tenantId, shiftId);
+        Store store = shift.getStore();
+
+        PricedSale priced = price(tenantId, store, request);
+
+        Sale sale = new Sale();
+        sale.setShift(shift);
+        sale.setStore(store);
+        sale.setUsername(request.getUsername());
+        ZoneId tz = ZoneId.of(tenantConfigService.getTimezone());
+        sale.setSaleDate(LocalDate.now(tz));
+        sale.setStatus(SaleStatus.OPEN);
+        sale.setTenantId(tenantId);
+
+        for (PricedLine line : priced.lines()) {
+            SaleItem item = new SaleItem();
+            item.setSale(sale);
+            item.setProduct(line.product());
+            item.setProductNameSnapshot(line.product().getName());
+            item.setUnitPriceSnapshot(line.unitPrice());
+            item.setQuantity(line.quantity());
+            item.setSubtotal(line.subtotal());
+            sale.getItems().add(item);
+        }
+
+        PaymentSplit payment = priced.payment();
+        sale.setSubtotal(priced.subtotal());
+        sale.setIsv(priced.tax());   // "isv" almacena el impuesto calculado dinámicamente
+        sale.setPaymentMethod(payment.paymentMethod());
+        sale.setCashAmount(payment.cashAmount());
+        sale.setCardAmount(payment.cardAmount());
+        sale.setTotal(payment.total());
 
         saleRepository.save(sale);
+        // Misma transacción: si algún ítem no tiene stock (409), no queda ni la venta ni
+        // ningún descuento parcial.
         deductStock(store.getId(), sale.getItems(), request.getUsername());
         return SaleResponseDTO.from(sale);
     }
 
-    /** amount * (1 + rate), o amount sin cambios si rate es null/ZERO. */
-    private BigDecimal applyCardSurcharge(BigDecimal amount, BigDecimal rate) {
-        if (rate == null || rate.compareTo(BigDecimal.ZERO) == 0) return amount;
-        return amount.multiply(BigDecimal.ONE.add(rate)).setScale(2, RoundingMode.HALF_UP);
+    /**
+     * Registra una venta con Idempotency-Key (header opcional de POST /shifts/{id}/sales).
+     *
+     * <ul>
+     *   <li>Sin clave: igual que {@link #createSale}.</li>
+     *   <li>Clave nueva (o vencida, más de 24 h): registra la venta y guarda el JSON exacto de
+     *       la respuesta, todo en la misma transacción. Si la venta falla (p. ej. 409 por
+     *       stock), la clave tampoco queda registrada y el reintento vuelve a intentar.</li>
+     *   <li>Clave vigente con el mismo pedido: no registra nada y devuelve el mismo cuerpo.
+     *       Si la primera venta todavía se está procesando, espera a que termine.</li>
+     *   <li>Clave vigente con otro pedido: 409.</li>
+     * </ul>
+     * La clave es por empresa: la misma clave en otra empresa es otra venta (y RLS impide verla).
+     */
+    @Transactional
+    public IdempotentSaleResult createSaleIdempotent(Long shiftId, SaleRequestDTO request, String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return new IdempotentSaleResult(createSale(shiftId, request), false);
+        }
+        String key = idempotencyKey.trim();
+        if (key.length() > MAX_IDEMPOTENCY_KEY_LENGTH) {
+            throw new IllegalArgumentException("Idempotency-Key demasiado larga (máximo "
+                    + MAX_IDEMPOTENCY_KEY_LENGTH + " caracteres)");
+        }
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        String hash = requestHash(shiftId, request);
+
+        if (idempotencyKeyRepository.claim(tenantId, key, hash) == 0) {
+            IdempotencyKey existing = idempotencyKeyRepository.findByTenantIdAndIdempotencyKey(tenantId, key)
+                    .orElseThrow(() -> new ConflictException(
+                            "La venta con esta Idempotency-Key se está procesando; reintentar en unos segundos"));
+            if (!hash.equals(existing.getRequestHash())) {
+                throw new ConflictException("La Idempotency-Key ya se usó para otra venta");
+            }
+            if (existing.getResponse() == null) {
+                throw new ConflictException(
+                        "La venta con esta Idempotency-Key se está procesando; reintentar en unos segundos");
+            }
+            return new IdempotentSaleResult(existing.getResponse(), true);
+        }
+
+        idempotencyKeyRepository.purgeExpired(tenantId);
+        SaleResponseDTO dto = createSale(shiftId, request);
+        try {
+            idempotencyKeyRepository.complete(tenantId, key, dto.getId(), objectMapper.writeValueAsString(dto));
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("No se pudo registrar la respuesta de la venta", e);
+        }
+        return new IdempotentSaleResult(dto, false);
+    }
+
+    /** Huella del pedido (turno, medio de pago, montos e ítems), sin el usuario (lo pone el token). */
+    static String requestHash(Long shiftId, SaleRequestDTO request) {
+        StringBuilder sb = new StringBuilder()
+                .append(shiftId).append('|')
+                .append(request.getPaymentMethod() != null ? request.getPaymentMethod() : "CASH").append('|')
+                .append(plain(request.getCashAmount())).append('|')
+                .append(plain(request.getCardAmount()));
+        if (request.getItems() != null) {
+            for (SaleItemRequestDTO item : request.getItems()) {
+                sb.append('|').append(item.getProductId()).append('x').append(item.getQuantity());
+            }
+        }
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(sb.toString().getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static String plain(BigDecimal amount) {
+        return amount == null ? "" : amount.stripTrailingZeros().toPlainString();
     }
 
     @Transactional

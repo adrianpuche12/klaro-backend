@@ -35,6 +35,16 @@ public interface ShiftRepository extends JpaRepository<Shift, Long> {
     @Query("select s from Shift s where s.id = :id and s.tenantId = :tenantId")
     Optional<Shift> findForUpdate(@Param("id") Long id, @Param("tenantId") Long tenantId);
 
+    /**
+     * Serializa las aperturas de turno de un mismo local: toma el lock de la fila del local
+     * (FOR NO KEY UPDATE, que no frena los INSERT de ventas/turnos que la referencian por FK).
+     * Así la segunda apertura simultánea espera, ve el turno OPEN de la primera y responde
+     * 409 con un mensaje claro. El índice único ux_shift_open (V14) es la red de seguridad.
+     */
+    @Query(value = "SELECT id FROM store WHERE id = :storeId AND tenant_id = :tenantId FOR NO KEY UPDATE",
+           nativeQuery = true)
+    Optional<Long> lockStoreForShiftOpening(@Param("storeId") Long storeId, @Param("tenantId") Long tenantId);
+
     /** Historial de un local filtrado por quien abrió el turno ("Mis ventas" del cajero). */
     Page<Shift> findByStoreIdAndTenantIdAndUsernameIgnoreCaseOrderByOpenedAtDesc(
             Long storeId, Long tenantId, String username, Pageable pageable);

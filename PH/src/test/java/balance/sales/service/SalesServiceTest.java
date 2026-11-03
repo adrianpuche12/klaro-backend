@@ -11,6 +11,7 @@ import balance.model.Store;
 import balance.repository.StoreRepository;
 import balance.sales.dto.DailyClosingResponseDTO;
 import balance.sales.dto.SaleItemRequestDTO;
+import balance.sales.dto.SaleQuoteDTO;
 import balance.sales.dto.SaleRequestDTO;
 import balance.sales.dto.SaleResponseDTO;
 import balance.sales.model.Sale;
@@ -23,6 +24,7 @@ import balance.service.FormsService;
 import balance.tax.service.TaxService;
 import balance.tenant.context.TenantContext;
 import balance.tenant.service.TenantConfigService;
+import balance.users.model.PermissionModule;
 import balance.users.service.PermissionGuard;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -220,6 +222,53 @@ class SalesServiceTest {
         assertThat(result.getCashAmount()).isEqualByComparingTo("100.00");   // sin recargo
         assertThat(result.getCardAmount()).isEqualByComparingTo("103.00");   // 100 + 3%
         assertThat(result.getTotal()).isEqualByComparingTo("203.00");
+    }
+
+    @Test
+    void createSale_mixedQueNoCuadraConLosItems_esRechazado_yNoRegistraNiDescuentaNada() {
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
+        when(productRepository.findById(1L)).thenReturn(Optional.of(buildProduct(1L, "Pollo", new BigDecimal("100.00"))));
+
+        SaleRequestDTO request = buildRequest("cajero01", 1L, 2); // total real = 200.00
+        request.setPaymentMethod("MIXED");
+        request.setCashAmount(new BigDecimal("1.00"));             // antes: se cobraba 1 + recargo
+        request.setCardAmount(new BigDecimal("0.00"));
+
+        assertThatThrownBy(() -> salesService.createSale(1L, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("no cuadra");
+        verify(saleRepository, never()).save(any());
+        verifyNoInteractions(inventoryService);
+    }
+
+    @Test
+    void quote_usaElMismoCalculoQueLaVenta() {
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
+        when(productRepository.findById(1L)).thenReturn(Optional.of(buildProduct(1L, "Pollo", new BigDecimal("100.00"))));
+        when(saleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(tenantConfigService.getCardSurchargeRate()).thenReturn(new BigDecimal("0.03"));
+
+        SaleRequestDTO request = buildRequest("cajero01", 1L, 2);
+        request.setPaymentMethod("MIXED");
+        request.setCashAmount(new BigDecimal("50.00"));
+
+        SaleQuoteDTO quote = salesService.quote(1L, request);
+        SaleResponseDTO sale = salesService.createSale(1L, request);
+
+        assertThat(quote.getTotal()).isEqualByComparingTo(sale.getTotal());
+        assertThat(quote.getSubtotal()).isEqualByComparingTo(sale.getSubtotal());
+        assertThat(quote.getTax()).isEqualByComparingTo(sale.getIsv());
+        assertThat(quote.getCardAmount()).isEqualByComparingTo(sale.getCardAmount());
+        assertThat(quote.getSurcharge()).isEqualByComparingTo("4.50"); // 150 * 3%
+        verify(permissionGuard, times(2)).assertAccess(PermissionModule.POS, 1L);
+    }
+
+    @Test
+    void quote_conTurnoCerrado_esRechazado() {
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.CLOSED)));
+
+        assertThatThrownBy(() -> salesService.quote(1L, buildRequest("cajero01", 1L, 1)))
+                .isInstanceOf(IllegalStateException.class);
     }
 
     @Test

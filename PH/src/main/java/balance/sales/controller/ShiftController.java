@@ -7,6 +7,8 @@ import balance.users.model.PermissionModule;
 import balance.users.service.PermissionGuard;
 import balance.users.service.PermissionGuard.ShiftReadScope;
 import org.springframework.beans.factory.annotation.Autowired;
+import balance.common.exception.ConflictException;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -41,6 +43,9 @@ public class ShiftController {
         try {
             String username = tokenUser != null ? tokenUser : body.getOrDefault("username", "unknown");
             return ResponseEntity.ok(shiftService.openShift(storeId, username));
+        } catch (ConflictException e) {
+            // Ya hay un turno abierto en el local (incluye dos aperturas simultáneas).
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
         } catch (IllegalStateException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (Exception e) {

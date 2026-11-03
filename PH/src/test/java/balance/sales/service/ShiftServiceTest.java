@@ -78,7 +78,7 @@ class ShiftServiceTest {
     void openShift_codeMatchesExpectedPattern() {
         when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
         when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, ShiftStatus.OPEN, TENANT_ID)).thenReturn(false);
-        when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(shiftRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ShiftResponseDTO result = shiftService.openShift(1L, "cajero01");
 
@@ -89,7 +89,7 @@ class ShiftServiceTest {
     void openShift_codeEndsWithFirstThreeLettersOfStoreName() {
         when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
         when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, ShiftStatus.OPEN, TENANT_ID)).thenReturn(false);
-        when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(shiftRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ShiftResponseDTO result = shiftService.openShift(1L, "cajero01");
 
@@ -100,7 +100,7 @@ class ShiftServiceTest {
     void openShift_codeStripsNonLettersFromStoreName() {
         when(storeRepository.findByIdAndTenantId(2L, TENANT_ID)).thenReturn(Optional.of(buildStore(2L, "El Paraiso")));
         when(shiftRepository.existsByStoreIdAndStatusAndTenantId(2L, ShiftStatus.OPEN, TENANT_ID)).thenReturn(false);
-        when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(shiftRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ShiftResponseDTO result = shiftService.openShift(2L, "cajero02");
 
@@ -114,7 +114,7 @@ class ShiftServiceTest {
 
         when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
         when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, ShiftStatus.OPEN, TENANT_ID)).thenReturn(false);
-        when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(shiftRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ShiftResponseDTO result = shiftService.openShift(1L, "cajero01");
 
@@ -125,7 +125,7 @@ class ShiftServiceTest {
     void openShift_setsStatusToOpen() {
         when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
         when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, ShiftStatus.OPEN, TENANT_ID)).thenReturn(false);
-        when(shiftRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(shiftRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ShiftResponseDTO result = shiftService.openShift(1L, "cajero01");
 
@@ -148,8 +148,35 @@ class ShiftServiceTest {
         when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, ShiftStatus.OPEN, TENANT_ID)).thenReturn(true);
 
         assertThatThrownBy(() -> shiftService.openShift(1L, "cajero01"))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Ya existe un turno abierto");
+                .isInstanceOf(balance.common.exception.ConflictException.class)
+                .hasMessage("Ya hay un turno abierto en este local");
+        verify(shiftRepository).lockStoreForShiftOpening(1L, TENANT_ID);
+        verify(shiftRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void openShift_violacionDeUxShiftOpen_seTraduceA409() {
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
+        when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, ShiftStatus.OPEN, TENANT_ID)).thenReturn(false);
+        when(shiftRepository.saveAndFlush(any())).thenThrow(new org.springframework.dao.DataIntegrityViolationException(
+                "could not execute statement",
+                new org.hibernate.exception.ConstraintViolationException("duplicate key", null, "ux_shift_open")));
+
+        assertThatThrownBy(() -> shiftService.openShift(1L, "cajero01"))
+                .isInstanceOf(balance.common.exception.ConflictException.class)
+                .hasMessage("Ya hay un turno abierto en este local");
+    }
+
+    @Test
+    void openShift_otraViolacionDeIntegridad_noSeDisfrazaDeTurnoAbierto() {
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
+        when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, ShiftStatus.OPEN, TENANT_ID)).thenReturn(false);
+        when(shiftRepository.saveAndFlush(any())).thenThrow(new org.springframework.dao.DataIntegrityViolationException(
+                "could not execute statement",
+                new org.hibernate.exception.ConstraintViolationException("duplicate key", null, "shifts_code_key")));
+
+        assertThatThrownBy(() -> shiftService.openShift(1L, "cajero01"))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
 
     // ── closeShift ────────────────────────────────────────────────────────────
