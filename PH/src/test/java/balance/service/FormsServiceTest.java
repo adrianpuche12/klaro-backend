@@ -288,4 +288,37 @@ class FormsServiceTest {
         assertThatThrownBy(() -> formsService.saveSalaryPayment(p)).isInstanceOf(IllegalArgumentException.class);
         verify(salaryPaymentRepository, never()).save(any());
     }
+
+    // ── Local de un registro (para los permisos de editar/borrar) ────────────
+
+    @Test
+    void storeIdOf_returnsTheStoreOfTheRecordInThisCompany() {
+        SupplierPayment p = new SupplierPayment();
+        Store s = new Store(); s.setId(3L);
+        p.setStore(s);
+        when(supplierPaymentRepository.findByIdAndTenantId(7L, TENANT_ID)).thenReturn(Optional.of(p));
+
+        assertThat(formsService.storeIdOf("supplier", 7L)).isEqualTo(3L);
+    }
+
+    @Test
+    void storeIdOf_recordOfAnotherCompany_is404() {
+        when(closingDepositRepository.findByIdAndTenantId(7L, TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> formsService.storeIdOf("CLOSING", 7L))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("404");
+    }
+
+    @Test
+    void storeIdsOfGastoAdmin_areTheStoresOfItsTransactions() {
+        Store a = new Store(); a.setId(1L);
+        Store b = new Store(); b.setId(2L);
+        Transaction t1 = new Transaction(); t1.setTenantId(TENANT_ID); t1.setStore(a);
+        Transaction t2 = new Transaction(); t2.setTenantId(TENANT_ID); t2.setStore(b);
+        when(gastoAdminRepository.existsByIdAndTenantId(4L, TENANT_ID)).thenReturn(true);
+        when(transactionRepository.findByGastoAdminId(4L)).thenReturn(List.of(t1, t2));
+
+        assertThat(formsService.storeIdsOfGastoAdmin(4L)).containsExactlyInAnyOrder(1L, 2L);
+    }
 }

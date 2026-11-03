@@ -124,6 +124,13 @@ public class BankDepositService {
         bankDepositRepository.delete(deposit);
     }
 
+    /** Local del depósito (para validar permisos antes de leer/editar/borrar). IAE si no existe en esta empresa. */
+    @Transactional(readOnly = true)
+    public Long findStoreId(Long id) {
+        Store store = requireOwnDeposit(id).getStore();
+        return store != null ? store.getId() : null;
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private BankDeposit requireOwnDeposit(Long id) {

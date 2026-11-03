@@ -8,7 +8,9 @@ import balance.model.Store;
 import balance.service.FormsService;
 import balance.users.model.PermissionModule;
 import balance.users.service.PermissionGuard;
+import balance.users.service.PermissionGuard.StoreScope;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,17 +18,19 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 
-// ================================================================
-// AGREGAR ESTE IMPORT AL INICIO DEL ARCHIVO
-// ================================================================
 import balance.model.GastoAdmin;
 
 
 /** Vista agregada de depósitos/gastos/pagos, la misma familia de datos que
  * FormsController -- reachable solo desde la pantalla "Operaciones" (ver
- * Sidebar.tsx), gateada por OPERATIONS. */
+ * Sidebar.tsx), gateada por OPERATIONS.
+ *
+ * Etapa 1 de permisos: los listados se filtran por los locales permitidos del usuario (P2),
+ * "mine" queda atado al token (P3) y editar/borrar exige ser encargado en el local del
+ * registro (P8, misma regla que el resto de las escrituras de gestión). */
 @RestController
 @RequestMapping("/api/operations")
 public class OperationsController {
@@ -39,6 +43,34 @@ public class OperationsController {
 
     private void assertOperationsAccess() {
         permissionGuard.assertAccess(PermissionModule.OPERATIONS);
+    }
+
+    private List<AllOperationsDTO> onlyAllowedStores(List<AllOperationsDTO> operations) {
+        StoreScope scope = permissionGuard.storeScope();
+        return scope.unrestricted()
+                ? operations
+                : operations.stream().filter(op -> scope.allows(op.getStoreId())).toList();
+    }
+
+    /**
+     * Editar o borrar una operación: encargado (assertManage) en el local donde está hoy
+     * el registro. Un gasto administrativo se reparte entre varios locales: hay que poder
+     * gestionar todos.
+     */
+    private void assertCanManageOperation(String type, Long id) {
+        if ("GASTO_ADMIN".equalsIgnoreCase(type)) {
+            assertCanManageStores(formsService.storeIdsOfGastoAdmin(id));
+        } else {
+            permissionGuard.assertManage(PermissionModule.OPERATIONS, formsService.storeIdOf(type, id));
+        }
+    }
+
+    private void assertCanManageStores(Collection<Long> storeIds) {
+        if (storeIds.isEmpty()) {
+            // Sin local: solo quien no tiene locales acotados (root, cuenta sin perfil).
+            permissionGuard.assertManage(PermissionModule.OPERATIONS, null);
+        }
+        storeIds.forEach(storeId -> permissionGuard.assertManage(PermissionModule.OPERATIONS, storeId));
     }
 
     /**
@@ -58,7 +90,11 @@ public class OperationsController {
             @RequestParam(required = false) Long storeId,
             @RequestParam(defaultValue = "0")  int page,
             @RequestParam(defaultValue = "50") int size) {
-        assertOperationsAccess();
+        if (storeId != null) {
+            permissionGuard.assertAccess(PermissionModule.OPERATIONS, storeId);
+        } else {
+            assertOperationsAccess();
+        }
 
         List<AllOperationsDTO> result;
 
@@ -71,6 +107,9 @@ public class OperationsController {
         } else {
             result = formsService.getAllOperations();
         }
+        if (storeId == null) {
+            result = onlyAllowedStores(result); // "todos los locales" = todos MIS locales
+        }
 
         // Paginación en memoria
         int from = page * size;
@@ -79,13 +118,23 @@ public class OperationsController {
         return ResponseEntity.ok(result.subList(from, to));
     }
 
+    /**
+     * Historial de operaciones cargadas por un usuario. P3: atado al token — sin
+     * {@code username} (o con el propio) devuelve las del usuario logueado; el de otro
+     * usuario solo lo pide root o quien gestiona usuarios. Igual se filtra por locales.
+     */
     @GetMapping("/mine")
     public ResponseEntity<List<AllOperationsDTO>> getMyOperations(
-            @RequestParam String username,
+            @RequestParam(required = false) String username,
             @RequestParam(defaultValue = "0")  int page,
             @RequestParam(defaultValue = "20") int size) {
         assertOperationsAccess();
-        List<AllOperationsDTO> result = formsService.getOperationsByUsername(username);
+        String me = permissionGuard.currentUsername();
+        String target = (username == null || username.isBlank()) ? me : username.trim();
+        if (!target.equalsIgnoreCase(me) && !permissionGuard.canManageUsers()) {
+            throw new AccessDeniedException("Solo podés ver tus propias operaciones");
+        }
+        List<AllOperationsDTO> result = onlyAllowedStores(formsService.getOperationsByUsername(target));
         int from = page * size;
         if (from >= result.size()) return ResponseEntity.ok(List.of());
         int to   = Math.min(from + size, result.size());
@@ -117,6 +166,11 @@ public class OperationsController {
             @PathVariable Long id,
             @RequestBody AllOperationsDTO dto) {
         assertOperationsAccess();
+        assertCanManageOperation(type, id);
+        if (dto.getStoreId() != null && !"GASTO_ADMIN".equalsIgnoreCase(type)) {
+            // Mover el registro a otro local: también hay que ser encargado en el destino.
+            permissionGuard.assertManage(PermissionModule.OPERATIONS, dto.getStoreId());
+        }
         switch (type.toUpperCase()) {
             case "GASTO_ADMIN":
                 GastoAdmin gastoAdmin = new GastoAdmin();
@@ -222,6 +276,7 @@ public class OperationsController {
             @PathVariable String type,
             @PathVariable Long id) {
         assertOperationsAccess();
+        assertCanManageOperation(type, id);
         switch (type.toUpperCase()) {
             case "GASTO_ADMIN":
                 formsService.deleteGastoAdmin(id);

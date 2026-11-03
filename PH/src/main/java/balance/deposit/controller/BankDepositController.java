@@ -7,6 +7,7 @@ import balance.deposit.dto.PendingClosingDTO;
 import balance.deposit.service.BankDepositService;
 import balance.users.model.PermissionModule;
 import balance.users.service.PermissionGuard;
+import balance.users.service.PermissionGuard.StoreScope;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -49,26 +50,49 @@ public class BankDepositController {
         }
     }
 
-    /** GET /api/v3/deposits?storeId=1 (storeId opcional -- todos los locales del tenant si se omite) */
+    /**
+     * GET /api/v3/deposits?storeId=1. Sin storeId: los depósitos de TODOS los locales
+     * permitidos del usuario (antes un usuario acotado recibía 403 y uno sin perfil veía la
+     * empresa entera).
+     */
     @GetMapping
     public ResponseEntity<List<BankDepositResponseDTO>> findAll(@RequestParam(required = false) Long storeId) {
-        permissionGuard.assertAccess(PermissionModule.OPERATIONS, storeId);
-        return ResponseEntity.ok(bankDepositService.findAll(storeId));
+        if (storeId != null) {
+            permissionGuard.assertAccess(PermissionModule.OPERATIONS, storeId);
+            return ResponseEntity.ok(bankDepositService.findAll(storeId));
+        }
+        permissionGuard.assertAccess(PermissionModule.OPERATIONS);
+        StoreScope scope = permissionGuard.storeScope();
+        return ResponseEntity.ok(bankDepositService.findAll(null).stream()
+                .filter(d -> scope.allows(d.getStoreId()))
+                .toList());
     }
 
+    /** P8: el depósito tiene que ser de un local permitido del usuario. */
     @GetMapping("/{id}")
     public ResponseEntity<?> findById(@PathVariable Long id) {
         permissionGuard.assertAccess(PermissionModule.OPERATIONS);
+        BankDepositResponseDTO deposit;
         try {
-            return ResponseEntity.ok(bankDepositService.findById(id));
+            deposit = bankDepositService.findById(id);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
         }
+        permissionGuard.assertAccess(PermissionModule.OPERATIONS, deposit.getStoreId());
+        return ResponseEntity.ok(deposit);
     }
 
+    /** P8: editar un depósito es de encargado, y en el local del depósito. */
     @PutMapping("/{id}")
     public ResponseEntity<?> update(@PathVariable Long id, @RequestBody BankDepositUpdateDTO dto) {
         permissionGuard.assertAccess(PermissionModule.OPERATIONS);
+        Long storeId;
+        try {
+            storeId = bankDepositService.findStoreId(id);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
+        permissionGuard.assertManage(PermissionModule.OPERATIONS, storeId);
         try {
             return ResponseEntity.ok(bankDepositService.update(id, dto));
         } catch (IllegalArgumentException e) {
@@ -76,9 +100,17 @@ public class BankDepositController {
         }
     }
 
+    /** P8: borrar un depósito (y sus cierres vinculados) es de encargado, y en el local del depósito. */
     @DeleteMapping("/{id}")
     public ResponseEntity<?> delete(@PathVariable Long id) {
         permissionGuard.assertAccess(PermissionModule.OPERATIONS);
+        Long storeId;
+        try {
+            storeId = bankDepositService.findStoreId(id);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
+        permissionGuard.assertManage(PermissionModule.OPERATIONS, storeId);
         try {
             bankDepositService.delete(id);
             return ResponseEntity.noContent().build();
