@@ -24,11 +24,16 @@ public class KeycloakAdminService {
     @Value("${keycloak.admin.realm}")
     private String realm;
 
-    @Value("${keycloak.admin.username}")
-    private String adminUsername;
+    /**
+     * Cliente confidencial del propio realm con service account (solo manage-users,
+     * view-users, query-users y view-realm de ESE realm). Nunca el admin del realm master:
+     * el Keycloak es compartido con otros productos. Sin secreto el backend no arranca.
+     */
+    @Value("${keycloak.admin.client-id}")
+    private String clientId;
 
-    @Value("${keycloak.admin.password}")
-    private String adminPassword;
+    @Value("${keycloak.admin.client-secret}")
+    private String clientSecret;
 
     private final RestTemplate restTemplate = buildRestTemplate();
 
@@ -43,18 +48,17 @@ public class KeycloakAdminService {
 
     // ── Obtener token de admin ────────────────────────────────────────────────
 
-    /** Obtiene un token de acceso del realm master para llamar al Admin API. */
+    /** Token del service account del realm (client_credentials) para llamar al Admin API. */
     private String getAdminToken() {
-        String tokenUrl = keycloakUrl + "/realms/master/protocol/openid-connect/token";
+        String tokenUrl = keycloakUrl + "/realms/" + realm + "/protocol/openid-connect/token";
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
         MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
-        body.add("grant_type", "password");
-        body.add("client_id",  "admin-cli");
-        body.add("username",   adminUsername);
-        body.add("password",   adminPassword);
+        body.add("grant_type",    "client_credentials");
+        body.add("client_id",     clientId);
+        body.add("client_secret", clientSecret);
 
         HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
         ResponseEntity<Map> response = restTemplate.postForEntity(tokenUrl, request, Map.class);
