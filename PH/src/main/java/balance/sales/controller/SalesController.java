@@ -1,6 +1,8 @@
 package balance.sales.controller;
 
+import balance.common.exception.ConflictException;
 import balance.sales.dto.*;
+import balance.sales.service.IdempotentSaleResult;
 import balance.sales.service.SalesService;
 import balance.sales.service.ShiftAccessService;
 import balance.sales.service.ShiftExpenseService;
@@ -10,6 +12,8 @@ import balance.users.service.PermissionGuard.ShiftReadScope;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -37,8 +41,13 @@ public class SalesController {
     private ShiftAccessService shiftAccess;
 
     // Registrar venta en un turno
+    // Header opcional Idempotency-Key (UUID que genera el POS por venta): un reintento con la
+    // misma clave devuelve la misma venta (mismo cuerpo, 200) en vez de cobrarla dos veces.
+    // 409: stock insuficiente, o la clave ya se usó con otro pedido. 400: datos inválidos
+    // (incluye un pago MIXED que no cuadra con el total).
     @PostMapping("/shifts/{shiftId}/sales")
     public ResponseEntity<?> createSale(@PathVariable Long shiftId,
+                                         @RequestHeader(value = IDEMPOTENCY_KEY_HEADER, required = false) String idempotencyKey,
                                          @Valid @RequestBody SaleRequestDTO request) {
         shiftAccess.assertCanOperate(shiftId);
         String tokenUser = permissionGuard.currentUsername();
@@ -46,7 +55,35 @@ public class SalesController {
             request.setUsername(tokenUser); // quien vende es quien está logueado, no lo que diga el body
         }
         try {
-            return ResponseEntity.ok(salesService.createSale(shiftId, request));
+            IdempotentSaleResult result = salesService.createSaleIdempotent(shiftId, request, idempotencyKey);
+            if (result.replayed()) {
+                // JSON exacto de la primera respuesta (String: se escribe tal cual).
+                return ResponseEntity.ok()
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(IDEMPOTENT_REPLAYED_HEADER, "true")
+                        .body(result.body());
+            }
+            return ResponseEntity.ok(result.body());
+        } catch (ConflictException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+    static final String IDEMPOTENT_REPLAYED_HEADER = "Idempotent-Replayed";
+
+    /**
+     * Cotiza una venta sin registrarla: subtotal, impuestos, recargo y total calculados con el
+     * MISMO código que POST /shifts/{shiftId}/sales, con el mismo cuerpo y los mismos permisos
+     * (POS en el local del turno). El POS lo muestra antes de confirmar.
+     */
+    @PostMapping("/shifts/{shiftId}/sales/quote")
+    public ResponseEntity<?> quoteSale(@PathVariable Long shiftId, @RequestBody SaleRequestDTO request) {
+        shiftAccess.assertCanOperate(shiftId);
+        try {
+            return ResponseEntity.ok(salesService.quote(shiftId, request));
         } catch (IllegalArgumentException | IllegalStateException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }

@@ -8,6 +8,8 @@ import balance.inventory.model.InventoryMovement;
 import balance.inventory.model.InventoryStock;
 import balance.inventory.repository.InventoryMovementRepository;
 import balance.inventory.repository.InventoryStockRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import balance.model.Store;
@@ -32,6 +34,7 @@ public class InventoryService {
     @Autowired private ProductRepository productRepository;
     @Autowired private StoreRepository storeRepository;
     @Autowired private CategoryRepository categoryRepository;
+    @PersistenceContext private EntityManager entityManager;
 
     @Transactional
     public List<StockItemDTO> getStock(Long storeId) {
@@ -91,22 +94,23 @@ public class InventoryService {
                 .filter(p -> tenantId.equals(p.getTenantId()))
                 .orElseThrow(() -> new IllegalArgumentException("Producto no encontrado"));
 
-        InventoryStock stock = stockRepository
-                .findByProductIdAndStoreIdAndTenantId(dto.getProductId(), storeId, tenantId)
-                .orElseGet(() -> {
-                    InventoryStock s = new InventoryStock();
-                    s.setProduct(product);
-                    s.setStore(store);
-                    s.setTenantId(tenantId);
-                    s.setQuantity(0);
-                    return s;
-                });
+        if (dto.getQuantity() == null || dto.getQuantity() <= 0) {
+            throw new IllegalArgumentException("La cantidad debe ser mayor a 0");
+        }
+        int qty = dto.getQuantity();
 
-        int delta = "SALIDA".equals(dto.getType()) ? -dto.getQuantity() : dto.getQuantity();
-        int newQty = stock.getQuantity() + delta;
-        if (newQty < 0) throw new IllegalArgumentException("Stock insuficiente para realizar la salida");
-        stock.setQuantity(newQty);
-        stockRepository.save(stock);
+        // Atómico: nunca leer-modificar-escribir. La fila se crea en 0 si falta y el
+        // movimiento es un UPDATE relativo (quantity = quantity -/+ :qty) en esta misma
+        // transacción (la de la venta, si viene de una venta).
+        stockRepository.insertIfMissing(tenantId, product.getId(), storeId);
+        boolean salida = "SALIDA".equals(dto.getType());
+        int updated = salida
+                ? stockRepository.decrementIfAvailable(tenantId, product.getId(), storeId, qty)
+                : stockRepository.increment(tenantId, product.getId(), storeId, qty);
+        if (updated == 0) {
+            if (salida) throw new InsufficientStockException(product.getName());
+            throw new IllegalStateException("No se encontró el stock del producto " + product.getName());
+        }
 
         InventoryMovement movement = new InventoryMovement();
         movement.setType(dto.getType());
@@ -121,6 +125,12 @@ public class InventoryService {
         movement.setTenantId(tenantId);
         movementRepository.save(movement);
 
+        // El UPDATE nativo no pasa por el contexto de persistencia: refresh para devolver la
+        // cantidad real (esta transacción tiene el lock de la fila hasta el commit).
+        InventoryStock stock = stockRepository
+                .findByProductIdAndStoreIdAndTenantId(product.getId(), storeId, tenantId)
+                .orElseThrow(() -> new IllegalStateException("No se encontró el stock del producto " + product.getName()));
+        entityManager.refresh(stock);
         return StockItemDTO.from(stock);
     }
 

@@ -1,6 +1,7 @@
 package balance.sales.controller;
 
 import balance.sales.dto.*;
+import balance.sales.service.IdempotentSaleResult;
 import balance.sales.service.SalesService;
 import balance.sales.service.ShiftExpenseService;
 import balance.users.service.PermissionGuard;
@@ -41,7 +42,7 @@ class SalesControllerTest {
     @Test
     void createSale_returns200WhenSuccessful() throws Exception {
         SaleResponseDTO response = buildSaleResponse();
-        when(salesService.createSale(eq(1L), any())).thenReturn(response);
+        when(salesService.createSaleIdempotent(eq(1L), any(), any())).thenReturn(new IdempotentSaleResult(response, false));
 
         String body = objectMapper.writeValueAsString(Map.of(
                 "username", "cajero01",
@@ -56,7 +57,7 @@ class SalesControllerTest {
 
     @Test
     void createSale_returns400WhenShiftClosed() throws Exception {
-        when(salesService.createSale(eq(1L), any()))
+        when(salesService.createSaleIdempotent(eq(1L), any(), any()))
                 .thenThrow(new IllegalStateException("El turno ya estÃ¡ cerrado"));
 
         String body = objectMapper.writeValueAsString(Map.of(
@@ -73,7 +74,7 @@ class SalesControllerTest {
 
     @Test
     void createSale_returns400WhenProductNotFound() throws Exception {
-        when(salesService.createSale(eq(1L), any()))
+        when(salesService.createSaleIdempotent(eq(1L), any(), any()))
                 .thenThrow(new IllegalArgumentException("Producto no encontrado: 99"));
 
         String body = objectMapper.writeValueAsString(Map.of(
@@ -319,7 +320,7 @@ class SalesControllerTest {
                         .content("{\"username\":\"contador\",\"items\":[{\"productId\":1,\"quantity\":1}]}"))
                 .andExpect(status().isForbidden());
 
-        verify(salesService, never()).createSale(anyLong(), any());
+        verify(salesService, never()).createSaleIdempotent(anyLong(), any(), any());
     }
 
     @Test
@@ -377,5 +378,102 @@ class SalesControllerTest {
         mockMvc.perform(get("/api/v2/stores/2/sales")).andExpect(status().isForbidden());
 
         verify(salesService, never()).getSalesByStore(anyLong(), any(), any());
+    }
+
+    // ── Ventas sin carreras: 409, idempotencia, MIXED y cotización ──────────
+
+    private static final String SALE_BODY = "{\"username\":\"cajero01\",\"items\":[{\"productId\":1,\"quantity\":1}]}";
+
+    @Test
+    void createSale_stockInsuficiente_da409() throws Exception {
+        when(salesService.createSaleIdempotent(eq(1L), any(), any()))
+                .thenThrow(new balance.inventory.service.InsufficientStockException("Pollo"));
+
+        mockMvc.perform(post("/api/v2/shifts/1/sales").contentType(MediaType.APPLICATION_JSON).content(SALE_BODY))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("Stock insuficiente para Pollo"));
+    }
+
+    @Test
+    void createSale_mixedQueNoCuadra_da400() throws Exception {
+        when(salesService.createSaleIdempotent(eq(1L), any(), any()))
+                .thenThrow(new IllegalArgumentException("El pago MIXED no cuadra"));
+
+        mockMvc.perform(post("/api/v2/shifts/1/sales").contentType(MediaType.APPLICATION_JSON).content(SALE_BODY))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("El pago MIXED no cuadra"));
+    }
+
+    @Test
+    void createSale_pasaElHeaderIdempotencyKeyAlServicio() throws Exception {
+        when(salesService.createSaleIdempotent(eq(1L), any(), eq("abc-123")))
+                .thenReturn(new IdempotentSaleResult(buildSaleResponse(), false));
+
+        mockMvc.perform(post("/api/v2/shifts/1/sales").header("Idempotency-Key", "abc-123")
+                        .contentType(MediaType.APPLICATION_JSON).content(SALE_BODY))
+                .andExpect(status().isOk())
+                .andExpect(header().doesNotExist("Idempotent-Replayed"));
+
+        verify(salesService).createSaleIdempotent(eq(1L), any(), eq("abc-123"));
+    }
+
+    @Test
+    void createSale_reintento_devuelveElMismoCuerpoTalCual_con200() throws Exception {
+        String original = "{\"id\":7,\"total\":230.00,\"items\":[]}";
+        when(salesService.createSaleIdempotent(eq(1L), any(), eq("abc-123")))
+                .thenReturn(new IdempotentSaleResult(original, true));
+
+        mockMvc.perform(post("/api/v2/shifts/1/sales").header("Idempotency-Key", "abc-123")
+                        .contentType(MediaType.APPLICATION_JSON).content(SALE_BODY))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Idempotent-Replayed", "true"))
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(content().string(original));
+    }
+
+    @Test
+    void createSale_idempotencyKeyConOtroPedido_da409() throws Exception {
+        when(salesService.createSaleIdempotent(eq(1L), any(), eq("abc-123")))
+                .thenThrow(new balance.common.exception.ConflictException("La Idempotency-Key ya se usó para otra venta"));
+
+        mockMvc.perform(post("/api/v2/shifts/1/sales").header("Idempotency-Key", "abc-123")
+                        .contentType(MediaType.APPLICATION_JSON).content(SALE_BODY))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void quote_devuelveElCalculoDelServicio() throws Exception {
+        SaleQuoteDTO quote = new SaleQuoteDTO(new BigDecimal("200.00"), new BigDecimal("30.00"),
+                new BigDecimal("230.00"), null, new BigDecimal("0.00"), new BigDecimal("230.00"), "CASH",
+                new BigDecimal("230.00"), new BigDecimal("0.00"), new BigDecimal("0.00"), List.of());
+        when(salesService.quote(eq(1L), any())).thenReturn(quote);
+
+        mockMvc.perform(post("/api/v2/shifts/1/sales/quote")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"items\":[{\"productId\":1,\"quantity\":2}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(230.00))
+                .andExpect(jsonPath("$.tax").value(30.00));
+        verify(salesService, never()).createSaleIdempotent(anyLong(), any(), any());
+    }
+
+    @Test
+    void quote_sinPos_esForbidden() throws Exception {
+        doThrow(new org.springframework.security.access.AccessDeniedException("No tenés acceso a este módulo"))
+                .when(shiftAccess).assertCanOperate(1L);
+
+        mockMvc.perform(post("/api/v2/shifts/1/sales/quote")
+                        .contentType(MediaType.APPLICATION_JSON).content(SALE_BODY))
+                .andExpect(status().isForbidden());
+        verify(salesService, never()).quote(anyLong(), any());
+    }
+
+    @Test
+    void quote_datosInvalidos_da400() throws Exception {
+        when(salesService.quote(eq(1L), any())).thenThrow(new IllegalArgumentException("El pago MIXED no cuadra"));
+
+        mockMvc.perform(post("/api/v2/shifts/1/sales/quote")
+                        .contentType(MediaType.APPLICATION_JSON).content(SALE_BODY))
+                .andExpect(status().isBadRequest());
     }
 }

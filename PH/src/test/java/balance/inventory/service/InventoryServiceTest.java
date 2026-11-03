@@ -40,6 +40,7 @@ class InventoryServiceTest {
     @Mock private ProductRepository           productRepository;
     @Mock private StoreRepository             storeRepository;
     @Mock private CategoryRepository          categoryRepository;
+    @Mock private jakarta.persistence.EntityManager entityManager;
 
     @BeforeEach
     void setTenantContext() {
@@ -91,117 +92,93 @@ class InventoryServiceTest {
         return dto;
     }
 
+    // El stock se mueve con UPDATE relativos y atómicos en la base (ver InventoryStockRepository):
+    // estos tests verifican QUÉ operación se pide; la atomicidad real contra Postgres la prueba
+    // VentasSinCarrerasTest (20 ventas en paralelo del último ítem).
+
+    private void stubStoreAndProduct(Store store, Product product) {
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
+    }
+
+    private void stubReload(InventoryStock stock) {
+        when(stockRepository.findByProductIdAndStoreIdAndTenantId(1L, 1L, TENANT_ID)).thenReturn(Optional.of(stock));
+    }
+
     // ── adjust — ENTRADA ──────────────────────────────────────────────────────
 
     @Test
-    void adjust_ENTRADA_increasesQuantityCorrectly() {
+    void adjust_ENTRADA_sumaConUpdateAtomico() {
         Store store = buildStore(1L);
         Product product = buildProduct(1L, 5);
-        InventoryStock stock = buildStock(product, store, 10);
+        stubStoreAndProduct(store, product);
+        when(stockRepository.increment(TENANT_ID, 1L, 1L, 5)).thenReturn(1);
+        stubReload(buildStock(product, store, 15));
 
-        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
-        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(stockRepository.findByProductIdAndStoreIdAndTenantId(1L, 1L, TENANT_ID)).thenReturn(Optional.of(stock));
-        when(stockRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        StockItemDTO result = inventoryService.adjust(1L, buildAdj(1L, "ENTRADA", 5));
 
-        inventoryService.adjust(1L, buildAdj(1L, "ENTRADA", 5));
-
-        assertThat(stock.getQuantity()).isEqualTo(15);
-        verify(stockRepository).save(stock);
+        verify(stockRepository).insertIfMissing(TENANT_ID, 1L, 1L);
+        verify(stockRepository).increment(TENANT_ID, 1L, 1L, 5);
+        verify(stockRepository, never()).decrementIfAvailable(anyLong(), anyLong(), anyLong(), anyInt());
+        verify(stockRepository, never()).save(any());   // nunca leer-modificar-escribir
+        verify(entityManager).refresh(any(InventoryStock.class));
+        assertThat(result.getQuantity()).isEqualTo(15);
     }
 
     // ── adjust — SALIDA ───────────────────────────────────────────────────────
 
     @Test
-    void adjust_SALIDA_decreasesQuantityCorrectly() {
+    void adjust_SALIDA_descuentaConUpdateCondicionado() {
         Store store = buildStore(1L);
         Product product = buildProduct(1L, 0);
-        InventoryStock stock = buildStock(product, store, 10);
+        stubStoreAndProduct(store, product);
+        when(stockRepository.decrementIfAvailable(TENANT_ID, 1L, 1L, 3)).thenReturn(1);
+        stubReload(buildStock(product, store, 7));
 
-        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
-        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(stockRepository.findByProductIdAndStoreIdAndTenantId(1L, 1L, TENANT_ID)).thenReturn(Optional.of(stock));
-        when(stockRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        StockItemDTO result = inventoryService.adjust(1L, buildAdj(1L, "SALIDA", 3));
 
-        inventoryService.adjust(1L, buildAdj(1L, "SALIDA", 3));
-
-        assertThat(stock.getQuantity()).isEqualTo(7);
+        verify(stockRepository).decrementIfAvailable(TENANT_ID, 1L, 1L, 3);
+        verify(stockRepository, never()).increment(anyLong(), anyLong(), anyLong(), anyInt());
+        verify(stockRepository, never()).save(any());
+        assertThat(result.getQuantity()).isEqualTo(7);
     }
 
     @Test
-    void adjust_SALIDA_throwsWhenStockInsufficient() {
-        Store store = buildStore(1L);
-        Product product = buildProduct(1L, 0);
-        InventoryStock stock = buildStock(product, store, 2);
-
-        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
-        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(stockRepository.findByProductIdAndStoreIdAndTenantId(1L, 1L, TENANT_ID)).thenReturn(Optional.of(stock));
+    void adjust_SALIDA_sinStockSuficiente_lanza409SinRegistrarMovimiento() {
+        stubStoreAndProduct(buildStore(1L), buildProduct(1L, 0));
+        when(stockRepository.decrementIfAvailable(TENANT_ID, 1L, 1L, 5)).thenReturn(0);
 
         assertThatThrownBy(() -> inventoryService.adjust(1L, buildAdj(1L, "SALIDA", 5)))
+                .isInstanceOf(InsufficientStockException.class)
+                .isInstanceOf(balance.common.exception.ConflictException.class)
+                .hasMessage("Stock insuficiente para Pollo");
+        verify(movementRepository, never()).save(any());
+    }
+
+    @Test
+    void adjust_cantidadNoPositiva_esRechazada() {
+        stubStoreAndProduct(buildStore(1L), buildProduct(1L, 0));
+
+        assertThatThrownBy(() -> inventoryService.adjust(1L, buildAdj(1L, "ENTRADA", 0)))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Stock insuficiente");
-    }
-
-    @Test
-    void adjust_SALIDA_throwsWhenQuantityExactlyExceedsStock() {
-        Store store = buildStore(1L);
-        Product product = buildProduct(1L, 0);
-        InventoryStock stock = buildStock(product, store, 5);
-
-        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
-        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(stockRepository.findByProductIdAndStoreIdAndTenantId(1L, 1L, TENANT_ID)).thenReturn(Optional.of(stock));
-
-        assertThatThrownBy(() -> inventoryService.adjust(1L, buildAdj(1L, "SALIDA", 6)))
+                .hasMessageContaining("mayor a 0");
+        assertThatThrownBy(() -> inventoryService.adjust(1L, buildAdj(1L, "SALIDA", -3)))
                 .isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
-    void adjust_SALIDA_succeedsWhenQuantityEqualsStock() {
-        Store store = buildStore(1L);
-        Product product = buildProduct(1L, 0);
-        InventoryStock stock = buildStock(product, store, 5);
-
-        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
-        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(stockRepository.findByProductIdAndStoreIdAndTenantId(1L, 1L, TENANT_ID)).thenReturn(Optional.of(stock));
-        when(stockRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-
-        inventoryService.adjust(1L, buildAdj(1L, "SALIDA", 5));
-
-        assertThat(stock.getQuantity()).isEqualTo(0);
+        verifyNoInteractions(movementRepository);
+        verify(stockRepository, never()).increment(anyLong(), anyLong(), anyLong(), anyInt());
+        verify(stockRepository, never()).decrementIfAvailable(anyLong(), anyLong(), anyLong(), anyInt());
     }
 
     // ── adjustSilent ──────────────────────────────────────────────────────────
 
     @Test
     void adjustSilent_doesNotThrowWhenStockInsufficient() {
-        Store store = buildStore(1L);
-        Product product = buildProduct(1L, 0);
-        InventoryStock stock = buildStock(product, store, 0);
-
-        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
-        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(stockRepository.findByProductIdAndStoreIdAndTenantId(1L, 1L, TENANT_ID)).thenReturn(Optional.of(stock));
+        stubStoreAndProduct(buildStore(1L), buildProduct(1L, 0));
+        when(stockRepository.decrementIfAvailable(TENANT_ID, 1L, 1L, 999)).thenReturn(0);
 
         assertThatCode(() -> inventoryService.adjustSilent(1L, buildAdj(1L, "SALIDA", 999)))
                 .doesNotThrowAnyException();
-    }
-
-    @Test
-    void adjustSilent_doesNotSaveWhenStockInsufficient() {
-        Store store = buildStore(1L);
-        Product product = buildProduct(1L, 0);
-        InventoryStock stock = buildStock(product, store, 1);
-
-        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
-        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(stockRepository.findByProductIdAndStoreIdAndTenantId(1L, 1L, TENANT_ID)).thenReturn(Optional.of(stock));
-
-        inventoryService.adjustSilent(1L, buildAdj(1L, "SALIDA", 999));
-
-        verify(stockRepository, never()).save(any());
+        verify(movementRepository, never()).save(any());
     }
 
     // ── movimiento registrado ─────────────────────────────────────────────────
@@ -210,7 +187,6 @@ class InventoryServiceTest {
     void adjust_registersMovementWithCorrectFields() {
         Store store = buildStore(1L);
         Product product = buildProduct(1L, 0);
-        InventoryStock stock = buildStock(product, store, 20);
 
         StockAdjustmentDTO dto = new StockAdjustmentDTO();
         dto.setProductId(1L);
@@ -220,10 +196,9 @@ class InventoryServiceTest {
         dto.setNotes("Diferencia mensual");
         dto.setUsername("admin");
 
-        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
-        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(stockRepository.findByProductIdAndStoreIdAndTenantId(1L, 1L, TENANT_ID)).thenReturn(Optional.of(stock));
-        when(stockRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        stubStoreAndProduct(store, product);
+        when(stockRepository.increment(TENANT_ID, 1L, 1L, 10)).thenReturn(1);
+        stubReload(buildStock(product, store, 30));
 
         inventoryService.adjust(1L, dto);
 
@@ -237,39 +212,22 @@ class InventoryServiceTest {
         assertThat(saved.getUsername()).isEqualTo("admin");
     }
 
-    @Test
-    void adjust_alwaysRegistersMovementRegardlessOfType() {
-        Store store = buildStore(1L);
-        Product product = buildProduct(1L, 0);
-        InventoryStock stock = buildStock(product, store, 10);
-
-        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
-        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(stockRepository.findByProductIdAndStoreIdAndTenantId(1L, 1L, TENANT_ID)).thenReturn(Optional.of(stock));
-        when(stockRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-
-        inventoryService.adjust(1L, buildAdj(1L, "ENTRADA", 5));
-
-        verify(movementRepository, times(1)).save(any(InventoryMovement.class));
-    }
-
     // ── auto-crear stock ──────────────────────────────────────────────────────
 
     @Test
-    void adjust_createsStockRecordIfNotExists() {
+    void adjust_createsStockRecordIfNotExists_sinCarrera() {
         Store store = buildStore(1L);
         Product product = buildProduct(1L, 0);
-
-        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(store));
-        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(stockRepository.findByProductIdAndStoreIdAndTenantId(1L, 1L, TENANT_ID)).thenReturn(Optional.empty());
-        when(stockRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        stubStoreAndProduct(store, product);
+        when(stockRepository.increment(TENANT_ID, 1L, 1L, 10)).thenReturn(1);
+        stubReload(buildStock(product, store, 10));
 
         inventoryService.adjust(1L, buildAdj(1L, "ENTRADA", 10));
 
-        ArgumentCaptor<InventoryStock> captor = ArgumentCaptor.forClass(InventoryStock.class);
-        verify(stockRepository, atLeastOnce()).save(captor.capture());
-        assertThat(captor.getAllValues()).anyMatch(s -> s.getQuantity() == 10);
+        // INSERT ... ON CONFLICT DO NOTHING antes del UPDATE: dos altas simultáneas no chocan.
+        var inOrder = inOrder(stockRepository);
+        inOrder.verify(stockRepository).insertIfMissing(TENANT_ID, 1L, 1L);
+        inOrder.verify(stockRepository).increment(TENANT_ID, 1L, 1L, 10);
     }
 
     // ── validaciones ──────────────────────────────────────────────────────────

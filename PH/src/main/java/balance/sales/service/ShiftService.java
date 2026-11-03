@@ -8,7 +8,9 @@ import balance.sales.dto.ShiftResponseDTO;
 import balance.sales.model.Shift;
 import balance.sales.repository.ShiftRepository;
 import balance.tenant.context.TenantSecurityUtils;
+import balance.common.exception.ConflictException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,8 +33,10 @@ public class ShiftService {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         Store store = TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
 
+        // Dos aperturas simultáneas del mismo local se serializan acá (ver lockStoreForShiftOpening).
+        shiftRepository.lockStoreForShiftOpening(storeId, tenantId);
         if (shiftRepository.existsByStoreIdAndStatusAndTenantId(storeId, ShiftStatus.OPEN, tenantId)) {
-            throw new IllegalStateException("Ya existe un turno abierto para este local");
+            throw new ConflictException(SHIFT_ALREADY_OPEN);
         }
 
         Shift shift = new Shift();
@@ -41,8 +45,25 @@ public class ShiftService {
         shift.setStatus(ShiftStatus.OPEN);
         shift.setCode(generateCode(store));
         shift.setTenantId(tenantId);
-        shiftRepository.save(shift);
+        try {
+            shiftRepository.saveAndFlush(shift);
+        } catch (DataIntegrityViolationException e) {
+            // Red de seguridad: el índice único parcial ux_shift_open (V14).
+            if (violates(e, "ux_shift_open")) throw new ConflictException(SHIFT_ALREADY_OPEN);
+            throw e;
+        }
         return ShiftResponseDTO.from(shift);
+    }
+
+    static final String SHIFT_ALREADY_OPEN = "Ya hay un turno abierto en este local";
+
+    private static boolean violates(Throwable e, String constraint) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof org.hibernate.exception.ConstraintViolationException cve
+                    && constraint.equals(cve.getConstraintName())) return true;
+            if (t.getMessage() != null && t.getMessage().contains(constraint)) return true;
+        }
+        return false;
     }
 
     @Transactional
