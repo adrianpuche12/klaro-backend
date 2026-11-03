@@ -198,19 +198,162 @@ class PermissionGuardTest {
     }
 
     @Test
-    void noAppUserRowForKeycloakId_hasFullAccess_notDenied() {
-        // Hoy es el caso de TODOS los usuarios reales de Belopia: la migración a
-        // Contabo (SPRINT-08C) partió de un schema vacío, sin datos migrados.
-        // Antes de SPRINT-09 nada autorizaba contra app_users -> negar acá sería
-        // una regresión real para cuentas ya en uso, no una mejora de seguridad.
+    void noAppUserRowForKeycloakId_isDenied_failClosed() {
+        // Etapa 1 (P6): antes una cuenta sin fila en app_users tenía acceso total ("legacy").
+        // Ahora falla cerrado: sin fila en la empresa del token no hay acceso a nada.
+        // En DEV las únicas cuentas sin fila son root.klaro (root, pasa explícito) y
+        // nilo.plataforma (plataforma, tenant 0).
         TenantContext.setTenantId(TENANT_A);
         authenticateAs("kc-uuid-sin-fila-en-app-users");
         when(userRepository.findByKeycloakIdAndTenantId("kc-uuid-sin-fila-en-app-users", TENANT_A))
                 .thenReturn(Optional.empty());
 
-        assertThatCode(() -> permissionGuard.assertAccess(PermissionModule.INVENTORY, 1L))
-                .doesNotThrowAnyException();
+        assertThatThrownBy(() -> permissionGuard.assertAccess(PermissionModule.INVENTORY, 1L))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> permissionGuard.assertAccess(PermissionModule.DASHBOARD))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> permissionGuard.assertAccessAny(PermissionModule.TRANSACTIONS))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> permissionGuard.assertManage(PermissionModule.OPERATIONS, 1L))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> permissionGuard.shiftReadScope(1L))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> permissionGuard.storeScope())
+                .isInstanceOf(AccessDeniedException.class);
         verifyNoInteractions(storeRepository);
+    }
+
+    @Test
+    void suspendedUser_isDenied_evenWithValidToken() {
+        TenantContext.setTenantId(TENANT_A);
+        authenticateAs(KEYCLOAK_ID);
+        AppUser suspended = legacyUser();
+        suspended.setStatus(AppUserStatus.SUSPENDED);
+        when(userRepository.findByKeycloakIdAndTenantId(KEYCLOAK_ID, TENANT_A)).thenReturn(Optional.of(suspended));
+
+        assertThatThrownBy(() -> permissionGuard.assertAccess(PermissionModule.DASHBOARD))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Root pasa siempre, de forma explícita
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    private void authenticateAsRoot(String keycloakId) {
+        Jwt jwt = Jwt.withTokenValue("token").header("alg", "none")
+                .subject(keycloakId).claim("preferred_username", "root.klaro")
+                .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(60)).build();
+        var auth = new TestingAuthenticationToken(jwt, null, "ROLE_root");
+        auth.setAuthenticated(true);
+        SecurityContextHolder.getContext().setAuthentication(auth);
+    }
+
+    @Test
+    void root_withoutRow_passesEverything() {
+        TenantContext.setTenantId(TENANT_A);
+        authenticateAsRoot(KEYCLOAK_ID);
+
+        assertThatCode(() -> {
+            permissionGuard.assertAccess(PermissionModule.INVENTORY, 1L);
+            permissionGuard.assertAccess(PermissionModule.DASHBOARD);
+            permissionGuard.assertManage(PermissionModule.OPERATIONS, 1L);
+            permissionGuard.assertStoreAllowed(1L);
+        }).doesNotThrowAnyException();
+        assertThat(permissionGuard.shiftReadScope(1L)).isEqualTo(PermissionGuard.ShiftReadScope.ALL);
+        assertThat(permissionGuard.storeScope().unrestricted()).isTrue();
+        assertThat(permissionGuard.canManageUsers()).isTrue();
+        verifyNoInteractions(userRepository, storeRepository);
+    }
+
+    @Test
+    void root_withRoleAndStoresAssigned_stillPasses() {
+        // Antes root pasaba solo porque su fila no tenía Role ni locales ("legacy"): si alguien
+        // le asignaba un Role acotado o un local, quedaba bloqueado. Ahora el rol de realm manda.
+        TenantContext.setTenantId(TENANT_A);
+        authenticateAsRoot(KEYCLOAK_ID);
+        Store store = buildStore(1L, TENANT_A);
+        lenient().when(userRepository.findByKeycloakIdAndTenantId(KEYCLOAK_ID, TENANT_A))
+                .thenReturn(Optional.of(userWithRole(Set.of("POS"), false, Set.of(store))));
+
+        assertThatCode(() -> {
+            permissionGuard.assertAccess(PermissionModule.INVENTORY, 99L);
+            permissionGuard.assertAccessAny(PermissionModule.TRANSACTIONS);
+            permissionGuard.assertManage(PermissionModule.CATALOG, 99L);
+        }).doesNotThrowAnyException();
+        assertThat(permissionGuard.storeScope().allows(99L)).isTrue();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Alcance de locales para listados (P2/P7/P10)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    @Test
+    void storeScope_restrictedUser_onlyHisStores_andNeverRecordsWithoutStore() {
+        TenantContext.setTenantId(TENANT_A);
+        authenticateAs(KEYCLOAK_ID);
+        Store mine = buildStore(1L, TENANT_A);
+        when(userRepository.findByKeycloakIdAndTenantId(KEYCLOAK_ID, TENANT_A))
+                .thenReturn(Optional.of(userWithRole(Set.of("OPERATIONS"), false, Set.of(mine))));
+
+        PermissionGuard.StoreScope scope = permissionGuard.storeScope();
+
+        assertThat(scope.unrestricted()).isFalse();
+        assertThat(scope.allows(1L)).isTrue();
+        assertThat(scope.allows(2L)).isFalse();
+        assertThat(scope.allows((Long) null)).isFalse();
+    }
+
+    @Test
+    void storeScope_userWithoutProfile_isUnrestricted() {
+        TenantContext.setTenantId(TENANT_A);
+        authenticateAs(KEYCLOAK_ID);
+        when(userRepository.findByKeycloakIdAndTenantId(KEYCLOAK_ID, TENANT_A)).thenReturn(Optional.of(legacyUser()));
+
+        assertThat(permissionGuard.storeScope().unrestricted()).isTrue();
+    }
+
+    @Test
+    void storeScope_platformAdmin_isEmpty_notForbidden() {
+        // nilo.plataforma (tenant 0, sin fila): su panel no se rompe, pero no ve ningún local.
+        TenantContext.setTenantId(0L);
+        Jwt jwt = Jwt.withTokenValue("token").header("alg", "none").subject("kc-plataforma")
+                .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(60)).build();
+        var auth = new TestingAuthenticationToken(jwt, null, "ROLE_platform");
+        auth.setAuthenticated(true);
+        SecurityContextHolder.getContext().setAuthentication(auth);
+
+        PermissionGuard.StoreScope scope = permissionGuard.storeScope();
+
+        assertThat(scope.unrestricted()).isFalse();
+        assertThat(scope.storeIds()).isEmpty();
+        verifyNoInteractions(userRepository);
+    }
+
+    @Test
+    void assertStoreAllowed_storeOutsideHisStores_isDenied() {
+        TenantContext.setTenantId(TENANT_A);
+        authenticateAs(KEYCLOAK_ID);
+        Store mine = buildStore(1L, TENANT_A);
+        Store other = buildStore(2L, TENANT_A);
+        when(userRepository.findByKeycloakIdAndTenantId(KEYCLOAK_ID, TENANT_A))
+                .thenReturn(Optional.of(userWithRole(Set.of("POS"), false, Set.of(mine))));
+        when(storeRepository.findByIdAndTenantId(2L, TENANT_A)).thenReturn(Optional.of(other));
+
+        assertThatThrownBy(() -> permissionGuard.assertStoreAllowed(2L)).isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void canManageUsers_onlyRootOrManagerRole_neverWithoutRow() {
+        TenantContext.setTenantId(TENANT_A);
+        authenticateAs(KEYCLOAK_ID);
+        when(userRepository.findByKeycloakIdAndTenantId(KEYCLOAK_ID, TENANT_A))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(userWithRole(Set.of("POS"), false, Set.of())))
+                .thenReturn(Optional.of(userWithRole(Set.of("POS"), true, Set.of())));
+
+        assertThat(permissionGuard.canManageUsers()).isFalse();
+        assertThat(permissionGuard.canManageUsers()).isFalse();
+        assertThat(permissionGuard.canManageUsers()).isTrue();
     }
 
     @Test
