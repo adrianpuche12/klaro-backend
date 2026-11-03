@@ -109,6 +109,7 @@ final class PermissionMatrix {
             GET    | /api/v2/stores/1/sales/summary             | -              | OK  | OK  | OK  | 403 |
             GET    | /api/v2/shifts/1/expenses                  | -              | OK  | OK  | OK  | 403 |
             POST   | /api/v2/shifts/1/sales                     | $VENTA         | OK  | OK  | OK  | 403 |
+            POST   | /api/v2/shifts/1/sales/quote               | $VENTA         | OK  | OK  | OK  | 403 |
             DELETE | /api/v2/sales/1                            | -              | OK  | OK  | OK  | 403 |
             POST   | /api/v2/shifts/1/expenses                  | $EGRESO        | OK  | OK  | OK  | 403 |
             POST   | /api/v2/shifts/1/closing                   | $CIERRE_TURNO  | OK  | OK  | OK  | 403 |
