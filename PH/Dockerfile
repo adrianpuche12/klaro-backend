@@ -6,9 +6,11 @@ RUN mvn dependency:go-offline -B
 COPY src ./src
 RUN mvn clean package -DskipTests
 
-# Stage 2 — Runtime liviano
+# Stage 2 — Runtime liviano, sin root (servidor compartido con otros proyectos)
 FROM eclipse-temurin:21-jre-jammy
+RUN groupadd --system --gid 10001 spring && useradd --system --uid 10001 --gid spring --no-create-home spring
 WORKDIR /app
-COPY --from=build /app/target/PH-0.0.1-SNAPSHOT.jar app.jar
+COPY --from=build --chown=spring:spring /app/target/PH-0.0.1-SNAPSHOT.jar app.jar
+USER spring:spring
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]

@@ -1,5 +1,7 @@
 package balance.config;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.Refill;
@@ -15,18 +17,29 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.time.Duration;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * 100 peticiones por minuto por IP.
+ *
+ * La IP es {@code request.getRemoteAddr()}: con {@code server.forward-headers-strategy=native}
+ * Tomcat la toma de X-Forwarded-For solo cuando la conexión viene de un proxy interno
+ * (nginx). Un X-Forwarded-For inventado por el cliente no sirve para saltear el límite.
+ *
+ * Los buckets viven en una caché acotada (tamaño máximo y expiración por inactividad), para
+ * que miles de IPs distintas no hagan crecer la memoria sin límite en un servidor compartido.
+ */
 @Component
 @Order(1)
 public class RateLimitingFilter implements Filter {
 
-    // 100 peticiones por minuto por IP
-    private static final int CAPACITY = 100;
+    static final int CAPACITY = 100;
     private static final Duration REFILL_PERIOD = Duration.ofMinutes(1);
+    static final long MAX_TRACKED_IPS = 50_000;
 
-    private final Map<String, Bucket> buckets = new ConcurrentHashMap<>();
+    private final Cache<String, Bucket> buckets = Caffeine.newBuilder()
+            .maximumSize(MAX_TRACKED_IPS)
+            .expireAfterAccess(Duration.ofMinutes(10))
+            .build();
 
     @Override
     public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain)
@@ -41,8 +54,7 @@ public class RateLimitingFilter implements Filter {
             return;
         }
 
-        String ip = getClientIp(request);
-        Bucket bucket = buckets.computeIfAbsent(ip, k -> createBucket());
+        Bucket bucket = buckets.get(request.getRemoteAddr(), k -> createBucket());
 
         if (bucket.tryConsume(1)) {
             chain.doFilter(req, res);
@@ -59,11 +71,8 @@ public class RateLimitingFilter implements Filter {
         return Bucket.builder().addLimit(limit).build();
     }
 
-    private String getClientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
+    long trackedIps() {
+        buckets.cleanUp();
+        return buckets.estimatedSize();
     }
 }
