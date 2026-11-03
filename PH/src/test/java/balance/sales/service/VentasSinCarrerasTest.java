@@ -203,7 +203,7 @@ class VentasSinCarrerasTest {
     void mismaIdempotencyKey_tresVeces_unaSolaVenta_mismoCuerpo() throws Exception {
         setStock(10);
         long shiftId = openShiftAsOwner(STORE, TENANT);
-        String key = "5f0c1e4a-8d2b-4c11-9a77-1d3e5b9c0f21";
+        String key = java.util.UUID.randomUUID().toString(); // como el POS: un UUID por venta
 
         TenantContext.setTenantId(TENANT);
         IdempotentSaleResult first = salesService.createSaleIdempotent(shiftId, request(2), key);

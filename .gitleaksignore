@@ -1,0 +1,3 @@
+# Falsos positivos revisados a mano (formato: commit:archivo:regla:línea).
+# UUID de ejemplo de un Idempotency-Key en un test (no es una credencial); el test ya genera el UUID en runtime.
+387e432b76ae32dcef19ddea803d299659609f98:PH/src/test/java/balance/sales/service/VentasSinCarrerasTest.java:generic-api-key:206
