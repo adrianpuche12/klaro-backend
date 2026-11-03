@@ -1,5 +1,6 @@
 package balance.controller;
 
+import balance.tenant.context.RecursoNoEncontradoException;
 import balance.model.Store;
 import balance.model.Transaction;
 import balance.service.BalanceService;
@@ -65,6 +66,8 @@ public class BalanceController {
 
             // Devolver respuesta con código de estado 201 (Created)
             return ResponseEntity.status(201).body(savedTransaction);
+        } catch (RecursoNoEncontradoException e) {
+            throw e; // 404: el local no es de esta empresa (no un error del servidor)
         } catch (Exception e) {
             // Manejo genérico de errores
             return ResponseEntity.status(500).body("Error al registrar la transacción: " + e.getMessage());

@@ -1,5 +1,6 @@
 package balance.operations.service;
 
+import balance.tenant.context.RecursoNoEncontradoException;
 import balance.deposit.model.BankDeposit;
 import balance.deposit.repository.BankDepositRepository;
 import balance.model.ClosingDeposit;
@@ -99,7 +100,7 @@ public class OperationsV3Service {
 
     private void requireStore(Long storeId, Long tenantId) {
         storeRepository.findByIdAndTenantId(storeId, tenantId)
-                .orElseThrow(() -> new IllegalArgumentException("Local no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Local no encontrado"));
     }
 
     private List<OperationDTO> collectAll(Long tenantId, LocalDate from, LocalDate to,

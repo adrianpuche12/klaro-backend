@@ -1,5 +1,6 @@
 package balance.reports;
 
+import balance.tenant.context.RecursoNoEncontradoException;
 import balance.tenant.service.TenantConfigService;
 import balance.users.model.PermissionModule;
 import balance.users.service.PermissionGuard;
@@ -46,6 +47,8 @@ public class ReportsController {
         try {
             byte[] data = salesReports.salesDetail(storeId, range[0], range[1], onlyUser, fmt);
             return file(data, "ventas-" + range[0] + "-al-" + range[1] + "." + fmt.extension(), fmt);
+        } catch (RecursoNoEncontradoException e) {
+            throw e; // 404: el local no es de esta empresa (no un error del servidor)
         } catch (Exception e) {
             return error(e);
         }
@@ -63,6 +66,8 @@ public class ReportsController {
         try {
             byte[] data = salesReports.productsSold(storeId, range[0], range[1], onlyUser, fmt);
             return file(data, "productos-vendidos-" + range[0] + "-al-" + range[1] + "." + fmt.extension(), fmt);
+        } catch (RecursoNoEncontradoException e) {
+            throw e; // 404: el local no es de esta empresa (no un error del servidor)
         } catch (Exception e) {
             return error(e);
         }
@@ -106,5 +111,11 @@ public class ReportsController {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<String> badRequest(IllegalArgumentException e) {
         return ResponseEntity.badRequest().body(e.getMessage());
+    }
+
+    /** Local que no es de esta empresa: 404, igual que en el resto de la API. */
+    @ExceptionHandler(RecursoNoEncontradoException.class)
+    public ResponseEntity<String> notFound(RecursoNoEncontradoException e) {
+        return ResponseEntity.status(404).body(e.getMessage());
     }
 }

@@ -1,5 +1,6 @@
 package balance.operations.controller;
 
+import balance.tenant.context.RecursoNoEncontradoException;
 import balance.tenant.service.TenantConfigService;
 import balance.operations.dto.OperationDTO;
 import balance.operations.dto.OperationSummaryDTO;
@@ -96,6 +97,8 @@ public class OperationsV3Controller {
         try {
             byte[] data = reportService.exportOperations(effectiveFrom, effectiveTo, type, storeId, fmt);
             return buildResponse(data, filename, fmt.contentType());
+        } catch (RecursoNoEncontradoException e) {
+            throw e; // 404: el local no es de esta empresa (no un error del servidor)
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
                     .body(("Error generando el informe: " + e.getMessage()).getBytes(java.nio.charset.StandardCharsets.UTF_8));

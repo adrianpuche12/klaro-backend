@@ -81,14 +81,23 @@ public class SecurityConfig {
      */
     @Bean
     public JwtDecoder jwtDecoder() {
-        OAuth2TokenValidator<Jwt> validator = new DelegatingOAuth2TokenValidator<>(
-                JwtValidators.createDefaultWithIssuer(issuerUri),
-                AzpValidator.fromCsv(allowedAzp));
+        OAuth2TokenValidator<Jwt> validator = tokenValidator(issuerUri, allowedAzp);
         return new SupplierJwtDecoder(() -> {
             NimbusJwtDecoder decoder = JwtDecoders.fromIssuerLocation(issuerUri);
             decoder.setJwtValidator(validator);
             return decoder;
         });
+    }
+
+    /**
+     * Validaciones del token además de la firma: vencimiento, issuer (el realm) y azp.
+     * Público para que los tests HTTP (que firman sus propios JWT) usen exactamente las
+     * mismas reglas que producción y solo cambien de dónde sale la clave pública.
+     */
+    public static OAuth2TokenValidator<Jwt> tokenValidator(String issuerUri, String allowedAzpCsv) {
+        return new DelegatingOAuth2TokenValidator<>(
+                JwtValidators.createDefaultWithIssuer(issuerUri),
+                AzpValidator.fromCsv(allowedAzpCsv));
     }
 
     /**

@@ -14,6 +14,9 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
     /** Todas las categorías de un local (para construir el árbol en memoria). */
     List<Category> findAllByStoreId(Long storeId);
 
+    /** Para validar ids que llegan en un body (ej. impuesto por categoría). */
+    boolean existsByIdAndTenantId(Long id, Long tenantId);
+
     /** Categorías raíz — usadas en delete de store y getSummary de inventario. */
     @Query("SELECT c FROM Category c WHERE c.store.id = :storeId AND c.parent IS NULL ORDER BY c.displayOrder ASC, c.name ASC")
     List<Category> findRootsByStoreId(Long storeId);

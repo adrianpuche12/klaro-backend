@@ -1,5 +1,6 @@
 package balance.sales.repository;
 
+import balance.common.enums.SaleStatus;
 import balance.sales.model.Sale;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -13,7 +14,8 @@ public interface SaleRepository extends JpaRepository<Sale, Long> {
 
     List<Sale> findByShiftIdAndTenantIdOrderByCreatedAtDesc(Long shiftId, Long tenantId);
 
-    List<Sale> findByShiftIdAndStatusAndTenantId(Long shiftId, String status, Long tenantId);
+    /** El estado es el enum (antes String: Hibernate 6 rechaza el parámetro, lo detectó SaleRepositoryIT al correr en Failsafe). */
+    List<Sale> findByShiftIdAndStatusAndTenantId(Long shiftId, SaleStatus status, Long tenantId);
 
     /** Busca una venta por id validando que pertenezca al tenant. */
     Optional<Sale> findByIdAndTenantId(Long id, Long tenantId);

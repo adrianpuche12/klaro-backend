@@ -1,5 +1,6 @@
 package balance.users.service;
 
+import balance.tenant.context.RecursoNoEncontradoException;
 import balance.common.enums.AppUserStatus;
 import balance.model.Store;
 import balance.repository.StoreRepository;
@@ -214,12 +215,12 @@ public class AppUserService {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         return userRepository.findByUsernameAndTenantId(username.toLowerCase(), tenantId)
                 .map(AppUserResponseDTO::from)
-                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado: " + username));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado: " + username));
     }
 
     private AppUser findOrThrow(Long id) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         return userRepository.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
     }
 }

@@ -1,5 +1,6 @@
 package balance.deposit.service;
 
+import balance.tenant.context.RecursoNoEncontradoException;
 import balance.tenant.service.TenantConfigService;
 import balance.deposit.dto.BankDepositRequestDTO;
 import balance.deposit.dto.BankDepositResponseDTO;
@@ -136,7 +137,7 @@ public class BankDepositService {
     private BankDeposit requireOwnDeposit(Long id) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         return bankDepositRepository.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(() -> new IllegalArgumentException("Depósito no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Depósito no encontrado"));
     }
 
     private BankDepositResponseDTO toResponseWithLinkedClosings(BankDeposit deposit) {

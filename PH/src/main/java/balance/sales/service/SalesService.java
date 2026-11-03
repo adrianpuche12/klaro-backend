@@ -1,5 +1,6 @@
 package balance.sales.service;
 
+import balance.tenant.context.RecursoNoEncontradoException;
 import balance.catalog.model.Product;
 import balance.catalog.repository.ProductRepository;
 import balance.common.exception.ConflictException;
@@ -134,7 +135,7 @@ public class SalesService {
     /** Turno del tenant, abierto, y con permiso POS en su local (mismo control para cotizar y vender). */
     private Shift requireOpenShiftForPos(Long tenantId, Long shiftId) {
         Shift shift = shiftRepository.findByIdAndTenantId(shiftId, tenantId)
-                .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Turno no encontrado"));
 
         if (ShiftStatus.CLOSED == shift.getStatus()) {
             throw new IllegalStateException("El turno ya está cerrado");
@@ -284,7 +285,7 @@ public class SalesService {
     public void cancelSale(Long saleId) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         Sale sale = saleRepository.findByIdAndTenantId(saleId, tenantId)
-                .orElseThrow(() -> new IllegalArgumentException("Venta no encontrada"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Venta no encontrada"));
 
         if (SaleStatus.CONFIRMED == sale.getStatus()) {
             throw new IllegalStateException("No se puede cancelar una venta ya confirmada");
@@ -296,7 +297,7 @@ public class SalesService {
     public List<SaleResponseDTO> getSalesByShift(Long shiftId) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         shiftRepository.findByIdAndTenantId(shiftId, tenantId)
-                .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Turno no encontrado"));
         return saleRepository.findByShiftIdAndTenantIdOrderByCreatedAtDesc(shiftId, tenantId)
                 .stream().map(SaleResponseDTO::from).toList();
     }
@@ -305,7 +306,7 @@ public class SalesService {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         return saleRepository.findByIdAndTenantId(saleId, tenantId)
                 .map(SaleResponseDTO::from)
-                .orElseThrow(() -> new IllegalArgumentException("Venta no encontrada"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Venta no encontrada"));
     }
 
     public List<SaleResponseDTO> getSalesByStore(Long storeId, LocalDate from, LocalDate to) {
@@ -334,7 +335,7 @@ public class SalesService {
     public DailySummaryDTO getDailySummary(Long shiftId) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         Shift shift = shiftRepository.findByIdAndTenantId(shiftId, tenantId)
-                .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Turno no encontrado"));
         List<Sale> sales = saleRepository.findByShiftIdAndTenantIdOrderByCreatedAtDesc(shiftId, tenantId);
         return buildSummary(sales, shift.getStore(), tenantConfigService.today());
     }
@@ -356,7 +357,7 @@ public class SalesService {
                                                BigDecimal openingCash, BigDecimal declaredCash) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         Shift shift = shiftRepository.findForUpdate(shiftId, tenantId)
-                .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Turno no encontrado"));
 
         if (ShiftStatus.CLOSED == shift.getStatus()) {
             throw new IllegalStateException("El turno ya está cerrado");

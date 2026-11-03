@@ -1,5 +1,6 @@
 package balance.inventory.service;
 
+import balance.tenant.context.RecursoNoEncontradoException;
 import balance.catalog.model.Product;
 import balance.catalog.repository.CategoryRepository;
 import balance.catalog.repository.ProductRepository;
@@ -92,7 +93,7 @@ public class InventoryService {
 
         Product product = productRepository.findById(dto.getProductId())
                 .filter(p -> tenantId.equals(p.getTenantId()))
-                .orElseThrow(() -> new IllegalArgumentException("Producto no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Producto no encontrado"));
 
         if (dto.getQuantity() == null || dto.getQuantity() <= 0) {
             throw new IllegalArgumentException("La cantidad debe ser mayor a 0");
