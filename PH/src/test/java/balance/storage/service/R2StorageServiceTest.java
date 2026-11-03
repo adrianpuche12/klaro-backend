@@ -11,13 +11,20 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.server.ResponseStatusException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
+import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
 
+import java.net.URL;
+import java.time.Duration;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,6 +49,7 @@ class R2StorageServiceTest {
 
     @InjectMocks private R2StorageService r2StorageService;
     @Mock private S3Client s3;
+    @Mock private S3Presigner presigner;
     @Mock private TenantRepository tenantRepository;
 
     @BeforeEach
@@ -66,18 +74,20 @@ class R2StorageServiceTest {
     // ── upload() ────────────────────────────────────────────────────────────
 
     @Test
-    void upload_pathIncludesCurrentTenantSlug() {
+    void upload_returnsKeyWithCurrentTenantSlug_andDetectedContentType() {
         TenantContext.setTenantId(TENANT_A_ID);
         when(tenantRepository.findById(TENANT_A_ID)).thenReturn(Optional.of(tenant(TENANT_A_ID, "acme")));
-        MockMultipartFile file = new MockMultipartFile("file", "foto.jpg", "image/jpeg", "contenido".getBytes());
 
-        String url = r2StorageService.upload(file, "comprobantes");
+        String key = r2StorageService.upload("contenido".getBytes(), ComprobanteFileType.PNG, "comprobantes");
 
-        assertThat(url).startsWith("https://pub-test.r2.dev/dev/acme/comprobantes/");
+        // Clave del objeto, no URL pública: el bucket pasa a ser privado.
+        assertThat(key).startsWith("dev/acme/comprobantes/").endsWith(".png");
+        assertThat(key).doesNotStartWith("http");
 
         ArgumentCaptor<PutObjectRequest> captor = ArgumentCaptor.forClass(PutObjectRequest.class);
         verify(s3).putObject(captor.capture(), any(RequestBody.class));
-        assertThat(captor.getValue().key()).startsWith("dev/acme/comprobantes/");
+        assertThat(captor.getValue().key()).isEqualTo(key);
+        assertThat(captor.getValue().contentType()).isEqualTo("image/png");
     }
 
     @Test
@@ -85,22 +95,114 @@ class R2StorageServiceTest {
         // Caso root (tenant_id=0) u otro tenantId sin fila propia en `tenants`.
         TenantContext.setTenantId(0L);
         when(tenantRepository.findById(0L)).thenReturn(Optional.empty());
-        MockMultipartFile file = new MockMultipartFile("file", "foto.jpg", "image/jpeg", "x".getBytes());
 
-        String url = r2StorageService.upload(file, "comprobantes");
+        String key = r2StorageService.upload("x".getBytes(), ComprobanteFileType.JPEG, "comprobantes");
 
-        assertThat(url).startsWith("https://pub-test.r2.dev/dev/tenant_0/comprobantes/");
+        assertThat(key).startsWith("dev/tenant_0/comprobantes/").endsWith(".jpg");
     }
 
     @Test
     void upload_throwsSecurityException_whenNoTenantContext() {
         TenantContext.clear();
-        MockMultipartFile file = new MockMultipartFile("file", "foto.jpg", "image/jpeg", "x".getBytes());
 
-        assertThatThrownBy(() -> r2StorageService.upload(file, "comprobantes"))
+        assertThatThrownBy(() -> r2StorageService.upload("x".getBytes(), ComprobanteFileType.PDF, "comprobantes"))
                 .isInstanceOf(SecurityException.class);
 
         verifyNoInteractions(s3);
+    }
+
+    // ── resolveTenantKey() ──────────────────────────────────────────────────
+
+    @Test
+    void resolveTenantKey_acceptsOwnKey() {
+        TenantContext.setTenantId(TENANT_A_ID);
+        when(tenantRepository.findById(TENANT_A_ID)).thenReturn(Optional.of(tenant(TENANT_A_ID, "acme")));
+
+        assertThat(r2StorageService.resolveTenantKey("dev/acme/comprobantes/1_a.jpg"))
+                .isEqualTo("dev/acme/comprobantes/1_a.jpg");
+    }
+
+    @Test
+    void resolveTenantKey_extractsKeyFromLegacyPublicUrl() {
+        TenantContext.setTenantId(TENANT_A_ID);
+        when(tenantRepository.findById(TENANT_A_ID)).thenReturn(Optional.of(tenant(TENANT_A_ID, "acme")));
+
+        assertThat(r2StorageService.resolveTenantKey("https://pub-test.r2.dev/dev/acme/comprobantes/1_a.jpg"))
+                .isEqualTo("dev/acme/comprobantes/1_a.jpg");
+        assertThat(r2StorageService.legacyPublicUrl("dev/acme/comprobantes/1_a.jpg"))
+                .isEqualTo("https://pub-test.r2.dev/dev/acme/comprobantes/1_a.jpg");
+    }
+
+    @Test
+    void resolveTenantKey_rejectsKeyOfAnotherTenant() {
+        TenantContext.setTenantId(TENANT_B_ID);
+        when(tenantRepository.findById(TENANT_B_ID)).thenReturn(Optional.of(tenant(TENANT_B_ID, "otraempresa")));
+
+        assertThatThrownBy(() -> r2StorageService.resolveTenantKey("dev/acme/comprobantes/1_a.jpg"))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> r2StorageService.resolveTenantKey(
+                "https://pub-test.r2.dev/dev/acme/comprobantes/1_a.jpg"))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void resolveTenantKey_rejectsSlugThatOnlySharesPrefix() {
+        // "acme" no puede leer "acme2": el prefijo se compara con la barra final.
+        TenantContext.setTenantId(TENANT_A_ID);
+        when(tenantRepository.findById(TENANT_A_ID)).thenReturn(Optional.of(tenant(TENANT_A_ID, "acme")));
+
+        assertThatThrownBy(() -> r2StorageService.resolveTenantKey("dev/acme2/comprobantes/1_a.jpg"))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void resolveTenantKey_urlOutsideOwnBucket_is404() {
+        TenantContext.setTenantId(TENANT_A_ID);
+
+        assertThatThrownBy(() -> r2StorageService.resolveTenantKey("https://evil.example.com/dev/acme/x.jpg"))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void resolveTenantKey_pathTraversal_is404() {
+        TenantContext.setTenantId(TENANT_A_ID);
+
+        assertThatThrownBy(() -> r2StorageService.resolveTenantKey("dev/acme/../otraempresa/x.jpg"))
+                .isInstanceOf(ResponseStatusException.class);
+    }
+
+    // ── presignedGetUrl() ───────────────────────────────────────────────────
+
+    @Test
+    void presignedGetUrl_expiresInFiveMinutes() throws Exception {
+        PresignedGetObjectRequest presigned = org.mockito.Mockito.mock(PresignedGetObjectRequest.class);
+        when(presigned.url()).thenReturn(new URL("https://r2.example.com/belopia-comprobantes/dev/acme/x.jpg?X-Amz-Signature=abc"));
+        when(presigner.presignGetObject(any(GetObjectPresignRequest.class))).thenReturn(presigned);
+
+        String url = r2StorageService.presignedGetUrl("dev/acme/comprobantes/x.jpg");
+
+        assertThat(url).contains("X-Amz-Signature");
+        ArgumentCaptor<GetObjectPresignRequest> captor = ArgumentCaptor.forClass(GetObjectPresignRequest.class);
+        verify(presigner).presignGetObject(captor.capture());
+        assertThat(captor.getValue().signatureDuration()).isEqualTo(Duration.ofMinutes(5));
+        assertThat(captor.getValue().getObjectRequest().bucket()).isEqualTo("belopia-comprobantes");
+        assertThat(captor.getValue().getObjectRequest().key()).isEqualTo("dev/acme/comprobantes/x.jpg");
+        assertThat(captor.getValue().getObjectRequest().responseContentDisposition()).isNull();
+    }
+
+    @Test
+    void presignedGetUrl_legacyNonImageObject_isForcedAsDownload() throws Exception {
+        PresignedGetObjectRequest presigned = org.mockito.Mockito.mock(PresignedGetObjectRequest.class);
+        when(presigned.url()).thenReturn(new URL("https://r2.example.com/x"));
+        when(presigner.presignGetObject(any(GetObjectPresignRequest.class))).thenReturn(presigned);
+
+        r2StorageService.presignedGetUrl("dev/acme/comprobantes/viejo.svg");
+
+        ArgumentCaptor<GetObjectPresignRequest> captor = ArgumentCaptor.forClass(GetObjectPresignRequest.class);
+        verify(presigner).presignGetObject(captor.capture());
+        assertThat(captor.getValue().getObjectRequest().responseContentDisposition()).isEqualTo("attachment");
+        assertThat(captor.getValue().getObjectRequest().responseContentType()).isEqualTo("application/octet-stream");
     }
 
     // ── delete() ────────────────────────────────────────────────────────────
