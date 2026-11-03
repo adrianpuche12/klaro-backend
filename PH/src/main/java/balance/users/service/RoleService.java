@@ -1,5 +1,6 @@
 package balance.users.service;
 
+import balance.model.Store;
 import balance.tenant.context.TenantSecurityUtils;
 import balance.users.dto.RoleRequestDTO;
 import balance.users.dto.RoleResponseDTO;
@@ -15,9 +16,12 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Roles configurables definidos por root (SPRINT-14). Root los crea/edita/
@@ -132,6 +136,56 @@ public class RoleService {
             throw new AccessDeniedException(
                     "No podés crear o gestionar un usuario de tu mismo nivel o superior");
         }
+    }
+
+    /**
+     * P5: un encargado no puede darle a otro usuario locales que él mismo no tiene
+     * (al crear, al cambiar sus locales o su local principal). Root no tiene límite.
+     * Se llama además de {@link #assertCanManage}: esa valida el nivel, esta el alcance.
+     */
+    public void assertCanGrantStores(Collection<Long> storeIds) {
+        if (storeIds == null || storeIds.isEmpty()) {
+            return;
+        }
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (hasRealmRole(auth, "root")) {
+            return;
+        }
+        AppUser caller = requireCaller(auth, tenantId);
+        Set<Long> own = caller.getAccessibleStores().stream().map(Store::getId).collect(Collectors.toSet());
+        for (Long id : storeIds) {
+            if (id != null && !own.contains(id)) {
+                throw new AccessDeniedException("No podés asignar un local al que vos no tenés acceso");
+            }
+        }
+    }
+
+    /**
+     * P5: un encargado no puede darle a otro usuario módulos que él mismo no tiene
+     * (al asignarle un Role, o con el endpoint viejo de permisos sueltos). Root no tiene límite.
+     */
+    public void assertCanGrantModules(Collection<String> modules) {
+        if (modules == null || modules.isEmpty()) {
+            return;
+        }
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (hasRealmRole(auth, "root")) {
+            return;
+        }
+        AppUser caller = requireCaller(auth, tenantId);
+        Set<String> own = caller.getRole() != null ? caller.getRole().getPermissions() : Set.of();
+        for (String module : modules) {
+            if (!own.contains(module)) {
+                throw new AccessDeniedException("No podés asignar un módulo que vos no tenés: " + module);
+            }
+        }
+    }
+
+    private AppUser requireCaller(Authentication auth, Long tenantId) {
+        return userRepository.findByKeycloakIdAndTenantId(currentKeycloakId(auth), tenantId)
+                .orElseThrow(() -> new AccessDeniedException("Acceso denegado"));
     }
 
     /** Gate para endpoints de lectura de usuarios (listar todos / por local):

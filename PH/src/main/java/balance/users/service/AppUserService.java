@@ -57,6 +57,14 @@ public class AppUserService {
                 ? roleService.findOrThrow(dto.getRoleId(), tenantId)
                 : null;
         roleService.assertCanManage(targetRole);
+        // P5: un encargado no da módulos ni locales que él mismo no tiene.
+        if (targetRole != null) {
+            roleService.assertCanGrantModules(targetRole.getPermissions());
+        }
+        Set<Long> grantedStores = new HashSet<>();
+        if (dto.getStoreId() != null) grantedStores.add(dto.getStoreId());
+        if (dto.getStoreIds() != null) grantedStores.addAll(dto.getStoreIds());
+        roleService.assertCanGrantStores(grantedStores);
 
         if (userRepository.existsByUsernameAndTenantId(dto.getUsername().trim().toLowerCase(), tenantId)) {
             throw new IllegalArgumentException("El username '" + dto.getUsername() + "' ya esta en uso");
@@ -106,6 +114,9 @@ public class AppUserService {
         roleService.assertCanManage(user.getRole());
         Role targetRole = roleId != null ? roleService.findOrThrow(roleId, tenantId) : null;
         roleService.assertCanManage(targetRole);
+        if (targetRole != null) {
+            roleService.assertCanGrantModules(targetRole.getPermissions()); // P5
+        }
         user.setRole(targetRole);
         return AppUserResponseDTO.from(userRepository.save(user));
     }
@@ -120,6 +131,7 @@ public class AppUserService {
     public AppUserResponseDTO updatePermissions(Long id, List<String> permissions) {
         AppUser user = findOrThrow(id);
         roleService.assertCanManage(user.getRole());
+        roleService.assertCanGrantModules(permissions); // P5
         user.setPermissions(permissions != null ? new HashSet<>(permissions) : new HashSet<>());
         return AppUserResponseDTO.from(userRepository.save(user));
     }
@@ -131,6 +143,7 @@ public class AppUserService {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         AppUser user = findOrThrow(id);
         roleService.assertCanManage(user.getRole());
+        roleService.assertCanGrantStores(storeIds); // P5
         Set<Store> stores = new HashSet<>();
         if (storeIds != null) {
             for (Long sid : storeIds) {
@@ -172,6 +185,7 @@ public class AppUserService {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         AppUser user = findOrThrow(id);
         roleService.assertCanManage(user.getRole());
+        roleService.assertCanGrantStores(List.of(newStoreId)); // P5
         Store store = TenantSecurityUtils.requireStore(newStoreId, tenantId, storeRepository);
         user.setStore(store);
         return AppUserResponseDTO.from(userRepository.save(user));

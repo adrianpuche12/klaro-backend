@@ -12,6 +12,9 @@ import balance.tenant.dto.TenantConfigDTO;
 import balance.tenant.service.TenantConfigService;
 import balance.users.controller.AppUserController;
 import balance.users.service.AppUserService;
+import balance.users.service.PermissionGuard;
+import balance.users.service.PermissionGuard.StoreScope;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,6 +55,13 @@ class RoleGuardTest {
         @Autowired MockMvc mockMvc;
         @MockBean  StoreV2Service storeV2Service;
         @MockBean  JwtDecoder jwtDecoder;
+        @MockBean  PermissionGuard permissionGuard;
+
+        @BeforeEach
+        void everyStoreVisible() {
+            // El filtro por locales permitidos (P10) se prueba en StoreV2ControllerTest.
+            when(permissionGuard.storeScope()).thenReturn(StoreScope.all());
+        }
 
         @Test void getAll_allowsUser() throws Exception {
             when(storeV2Service.findAll()).thenReturn(List.of());
@@ -138,6 +148,7 @@ class RoleGuardTest {
         @Autowired MockMvc mockMvc;
         @MockBean  TaxService taxService;
         @MockBean  JwtDecoder jwtDecoder;
+        @MockBean  PermissionGuard permissionGuard; // guard de módulo de la lectura: ver TaxControllerTest
 
         @Test void getAll_allowsAllRoles() throws Exception {
             when(taxService.findAll()).thenReturn(List.of());
@@ -266,6 +277,7 @@ class RoleGuardTest {
         @Autowired MockMvc mockMvc;
         @MockBean  AppUserService userService;
         @MockBean  JwtDecoder jwtDecoder;
+        @MockBean  PermissionGuard permissionGuard;
 
         @Test void getAll_deniesUnrecognizedRole() throws Exception {
             // Ninguna cuenta real emite esta autoridad -- confirma que el gate
@@ -289,7 +301,9 @@ class RoleGuardTest {
                     .andExpect(status().isOk());
         }
 
-        @Test void getByUsername_allowsAllRecognizedRoles() throws Exception {
+        @Test void getByUsername_ownProfile_allowsAllRecognizedRoles() throws Exception {
+            // P9: el perfil propio (el del token). El de otro usuario se prueba en AppUserControllerTest.
+            when(permissionGuard.currentUsername()).thenReturn("cajero01");
             when(userService.findByUsername("cajero01"))
                     .thenThrow(new IllegalArgumentException("no encontrado"));
             // 404 esperado (usuario no existe en mock) pero NO 401/403

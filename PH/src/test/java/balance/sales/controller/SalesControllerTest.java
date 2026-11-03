@@ -341,4 +341,41 @@ class SalesControllerTest {
 
         verify(salesService, never()).cancelSale(anyLong());
     }
+
+    // ── P7: historial/resumen por local respetan "solo mis turnos" ───────────
+
+    @Test
+    void salesByStore_cashierWithOwnScope_getsOnlyHisSales() throws Exception {
+        SaleResponseDTO mine = buildSaleResponse();                       // cajero01
+        SaleResponseDTO other = buildSaleResponse();
+        ReflectionTestUtils.setField(other, "username", "cajero02");
+        when(permissionGuard.shiftReadScope(1L)).thenReturn(PermissionGuard.ShiftReadScope.OWN);
+        when(permissionGuard.currentUsername()).thenReturn("cajero01");
+        when(salesService.getSalesByStore(eq(1L), any(), any())).thenReturn(List.of(mine, other));
+
+        mockMvc.perform(get("/api/v2/stores/1/sales"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].username").value("cajero01"));
+    }
+
+    @Test
+    void salesSummaryByStore_cashierWithOwnScope_summarizesOnlyHisSales() throws Exception {
+        when(permissionGuard.shiftReadScope(1L)).thenReturn(PermissionGuard.ShiftReadScope.OWN);
+        when(permissionGuard.currentUsername()).thenReturn("cajero01");
+
+        mockMvc.perform(get("/api/v2/stores/1/sales/summary")).andExpect(status().isOk());
+
+        verify(salesService).getSummaryByStore(eq(1L), any(), any(), eq("cajero01"));
+    }
+
+    @Test
+    void salesByStore_storeNotAllowed_isForbidden() throws Exception {
+        doThrow(new org.springframework.security.access.AccessDeniedException("No tenés acceso a este local"))
+                .when(permissionGuard).assertAccess(balance.users.model.PermissionModule.SALES_HISTORY, 2L);
+
+        mockMvc.perform(get("/api/v2/stores/2/sales")).andExpect(status().isForbidden());
+
+        verify(salesService, never()).getSalesByStore(anyLong(), any(), any());
+    }
 }

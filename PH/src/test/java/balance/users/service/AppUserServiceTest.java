@@ -475,6 +475,79 @@ class AppUserServiceTest {
         verifyNoInteractions(keycloakAdmin);
     }
 
+    // ── P5: no dar más locales ni módulos de los que tiene quien crea/edita ──
+
+    @Test
+    void create_checksThatTheCallerCanGrantTheRoleModulesAndAllStores() {
+        Role cajero = buildRole(9L, "Cajero", 3);
+        cajero.setPermissions(Set.of("POS"));
+        when(userRepository.existsByUsernameAndTenantId("cajero01", TENANT_ID)).thenReturn(false);
+        when(roleService.findOrThrow(9L, TENANT_ID)).thenReturn(cajero);
+        when(storeRepository.findByIdAndTenantId(any(), eq(TENANT_ID)))
+                .thenAnswer(inv -> Optional.of(buildStore(inv.getArgument(0), "Local")));
+        when(keycloakAdmin.createUser(any(), any(), any(), any(), any())).thenReturn("kc-uuid-nuevo");
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        AppUserRequestDTO dto = buildRequest("cajero01", "Cajero Uno", 1L);
+        dto.setRoleId(9L);
+        dto.setStoreIds(List.of(2L));
+        appUserService.create(dto);
+
+        verify(roleService).assertCanGrantModules(Set.of("POS"));
+        verify(roleService).assertCanGrantStores(Set.of(1L, 2L)); // principal + accesibles
+    }
+
+    @Test
+    void create_managerCannotGiveAStoreHeDoesNotHave_andNothingIsCreated() {
+        when(roleService.findOrThrow(9L, TENANT_ID)).thenReturn(buildRole(9L, "Cajero", 3));
+        doThrow(new AccessDeniedException("No podés asignar un local al que vos no tenés acceso"))
+                .when(roleService).assertCanGrantStores(any());
+
+        AppUserRequestDTO dto = buildRequest("cajero01", "Cajero Uno", 2L);
+        dto.setRoleId(9L);
+
+        assertThatThrownBy(() -> appUserService.create(dto)).isInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(keycloakAdmin);
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void updateStoreAccess_managerCannotGiveAStoreHeDoesNotHave() {
+        AppUser user = buildUser(1L, "cajero01", AppUserStatus.ACTIVE);
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
+        doThrow(new AccessDeniedException("No podés asignar un local al que vos no tenés acceso"))
+                .when(roleService).assertCanGrantStores(List.of(2L));
+
+        assertThatThrownBy(() -> appUserService.updateStoreAccess(1L, List.of(2L)))
+                .isInstanceOf(AccessDeniedException.class);
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void reassign_checksTheNewStoreCanBeGranted() {
+        AppUser user = buildUser(1L, "cajero01", AppUserStatus.ACTIVE);
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
+        doThrow(new AccessDeniedException("No podés asignar un local al que vos no tenés acceso"))
+                .when(roleService).assertCanGrantStores(List.of(2L));
+
+        assertThatThrownBy(() -> appUserService.reassign(1L, 2L)).isInstanceOf(AccessDeniedException.class);
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void updateRole_managerCannotGiveARoleWithModulesHeDoesNotHave() {
+        AppUser user = buildUser(1L, "cajero01", AppUserStatus.ACTIVE);
+        Role contador = buildRole(5L, "Contador", 3);
+        contador.setPermissions(Set.of("TRANSACTIONS"));
+        when(userRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(user));
+        when(roleService.findOrThrow(5L, TENANT_ID)).thenReturn(contador);
+        doThrow(new AccessDeniedException("No podés asignar un módulo que vos no tenés: TRANSACTIONS"))
+                .when(roleService).assertCanGrantModules(Set.of("TRANSACTIONS"));
+
+        assertThatThrownBy(() -> appUserService.updateRole(1L, 5L)).isInstanceOf(AccessDeniedException.class);
+        verify(userRepository, never()).save(any());
+    }
+
     // ── updateRole (SPRINT-14) ───────────────────────────────────────────────
 
     @Test

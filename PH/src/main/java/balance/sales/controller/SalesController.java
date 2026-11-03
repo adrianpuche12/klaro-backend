@@ -6,6 +6,7 @@ import balance.sales.service.ShiftAccessService;
 import balance.sales.service.ShiftExpenseService;
 import balance.users.model.PermissionModule;
 import balance.users.service.PermissionGuard;
+import balance.users.service.PermissionGuard.ShiftReadScope;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -19,7 +20,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v2")
-@CrossOrigin(origins = "*")
 public class SalesController {
 
     @Autowired
@@ -99,8 +99,26 @@ public class SalesController {
             @PathVariable Long storeId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        String onlyUser = salesHistoryOnlyUser(storeId);
+        List<SaleResponseDTO> sales = salesService.getSalesByStore(storeId, from, to);
+        if (onlyUser != null) {
+            sales = sales.stream()
+                    .filter(s -> s.getUsername() != null && s.getUsername().equalsIgnoreCase(onlyUser))
+                    .toList();
+        }
+        return ResponseEntity.ok(sales);
+    }
+
+    /**
+     * P7: historial/resumen de ventas de un local. Exige SALES_HISTORY en ese local y respeta
+     * el alcance de lectura de turnos: con OWN (cajero) devuelve el usuario del token, cuyas
+     * ventas son las únicas que puede ver; con ALL, null (todas). Mismo criterio que
+     * ReportsController. Fuera de los try/catch: AccessDeniedException tiene que dar 403.
+     */
+    private String salesHistoryOnlyUser(Long storeId) {
         permissionGuard.assertAccess(PermissionModule.SALES_HISTORY, storeId);
-        return ResponseEntity.ok(salesService.getSalesByStore(storeId, from, to));
+        return permissionGuard.shiftReadScope(storeId) == ShiftReadScope.OWN
+                ? permissionGuard.currentUsername() : null;
     }
 
     // Resumen de ventas por local (admin) â€” opcional: ?from=yyyy-MM-dd&to=yyyy-MM-dd
@@ -109,9 +127,9 @@ public class SalesController {
             @PathVariable Long storeId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        String onlyUser = salesHistoryOnlyUser(storeId);
         try {
-            permissionGuard.assertAccess(PermissionModule.SALES_HISTORY, storeId);
-            return ResponseEntity.ok(salesService.getSummaryByStore(storeId, from, to));
+            return ResponseEntity.ok(salesService.getSummaryByStore(storeId, from, to, onlyUser));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }

@@ -17,6 +17,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Service
@@ -363,6 +365,49 @@ public class FormsService {
                     "GastoAdmin no encontrado con id " + id);
         }
         gastoAdminRepository.deleteById(id);
+    }
+
+    // ── Local de un registro (para validar permisos antes de editar/borrar) ──
+
+    /**
+     * Local de una operación de la API vieja (CLOSING, SUPPLIER o SALARY), dentro de la
+     * empresa actual. {@code null} si el registro no tiene local. 404 si no existe en esta
+     * empresa; 400 si el tipo no es uno de esos tres (GASTO_ADMIN usa
+     * {@link #storeIdsOfGastoAdmin}).
+     */
+    @Transactional(readOnly = true)
+    public Long storeIdOf(String type, Long id) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        Store store = switch (type.toUpperCase()) {
+            case "CLOSING" -> closingDepositRepository.findByIdAndTenantId(id, tenantId)
+                    .orElseThrow(() -> notFound("ClosingDeposit", id)).getStore();
+            case "SUPPLIER" -> supplierPaymentRepository.findByIdAndTenantId(id, tenantId)
+                    .orElseThrow(() -> notFound("SupplierPayment", id)).getStore();
+            case "SALARY" -> salaryPaymentRepository.findByIdAndTenantId(id, tenantId)
+                    .orElseThrow(() -> notFound("SalaryPayment", id)).getStore();
+            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tipo de operación inválido");
+        };
+        return store != null ? store.getId() : null;
+    }
+
+    /**
+     * Locales entre los que se repartió un gasto administrativo (los de sus transacciones).
+     * Vacío si no tiene transacciones. 404 si el gasto no existe en esta empresa.
+     */
+    @Transactional(readOnly = true)
+    public Set<Long> storeIdsOfGastoAdmin(Long id) {
+        Long tenantId = TenantSecurityUtils.requireTenantId();
+        if (!gastoAdminRepository.existsByIdAndTenantId(id, tenantId)) {
+            throw notFound("GastoAdmin", id);
+        }
+        return transactionRepository.findByGastoAdminId(id).stream()
+                .filter(t -> tenantId.equals(t.getTenantId()) && t.getStore() != null)
+                .map(t -> t.getStore().getId())
+                .collect(Collectors.toSet());
+    }
+
+    private ResponseStatusException notFound(String entity, Long id) {
+        return new ResponseStatusException(HttpStatus.NOT_FOUND, entity + " no encontrado con id " + id);
     }
 
     // ── Helpers privados ──────────────────────────────────────────────────

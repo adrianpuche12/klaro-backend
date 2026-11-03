@@ -4,6 +4,7 @@ import balance.model.Transaction;
 import balance.repository.StoreRepository;
 import balance.repository.TransactionRepository;
 import balance.tenant.context.TenantSecurityUtils;
+import balance.users.service.PermissionGuard.StoreScope;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -35,11 +36,15 @@ public class BalanceService {
         return transactionRepository.findByTenantIdOrderByDateDesc(tenantId);
     }
 
-    public BigDecimal calculateBalance(LocalDate startDate, LocalDate endDate) {
+    /** Balance de los locales que el usuario puede ver ({@code scope}), nunca de toda la empresa si es acotado. */
+    public BigDecimal calculateBalance(LocalDate startDate, LocalDate endDate, StoreScope scope) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         LocalDate adjustedEndDate = endDate.plusDays(1);
         List<Transaction> transactions = transactionRepository
                 .findByTenantIdAndDateRange(tenantId, startDate, adjustedEndDate);
+        if (transactions != null && !scope.unrestricted()) {
+            transactions = transactions.stream().filter(t -> scope.allows(t.getStore())).toList();
+        }
 
         if (transactions == null || transactions.isEmpty()) return BigDecimal.ZERO;
 

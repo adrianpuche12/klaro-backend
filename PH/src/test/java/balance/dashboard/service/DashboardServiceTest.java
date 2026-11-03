@@ -14,6 +14,7 @@ import balance.sales.model.Shift;
 import balance.sales.repository.SaleRepository;
 import balance.sales.repository.ShiftRepository;
 import balance.tenant.context.TenantContext;
+import balance.users.service.PermissionGuard.StoreScope;
 import balance.catalog.model.Product;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -123,7 +124,7 @@ class DashboardServiceTest {
     void getDashboard_returnsEmptyStores_whenNoActiveStores() {
         when(storeRepository.findByTenantIdAndActive(TENANT_ID, true)).thenReturn(List.of());
 
-        DashboardDTO result = dashboardService.getDashboard();
+        DashboardDTO result = dashboardService.getDashboard(StoreScope.all());
 
         assertThat(result.getStores()).isEmpty();
         assertThat(result.getTotalSalesToday()).isZero();
@@ -138,7 +139,7 @@ class DashboardServiceTest {
         when(storeRepository.findByTenantIdAndActive(TENANT_ID, true)).thenReturn(List.of(store));
         stubEmptyInventory(STORE_ID);
 
-        DashboardDTO result = dashboardService.getDashboard();
+        DashboardDTO result = dashboardService.getDashboard(StoreScope.all());
 
         assertThat(result.getStores()).hasSize(1);
         assertThat(result.getStores().get(0).isHasActiveShift()).isFalse();
@@ -150,7 +151,7 @@ class DashboardServiceTest {
         when(storeRepository.findByTenantIdAndActive(TENANT_ID, true)).thenReturn(List.of(store));
         stubEmptyInventory(STORE_ID);
 
-        DashboardDTO result = dashboardService.getDashboard();
+        DashboardDTO result = dashboardService.getDashboard(StoreScope.all());
 
         assertThat(result.getStores().get(0).getShiftSalesTotal()).isEqualByComparingTo(BigDecimal.ZERO);
     }
@@ -167,7 +168,7 @@ class DashboardServiceTest {
         when(saleRepository.findOpenByShiftIdsAndTenantId(List.of(1L), TENANT_ID)).thenReturn(List.of());
         stubEmptyInventory(STORE_ID);
 
-        DashboardDTO result = dashboardService.getDashboard();
+        DashboardDTO result = dashboardService.getDashboard(StoreScope.all());
 
         var storeDTO = result.getStores().get(0);
         assertThat(storeDTO.isHasActiveShift()).isTrue();
@@ -189,7 +190,7 @@ class DashboardServiceTest {
                 .thenReturn(List.of(s1, s2));
         stubEmptyInventory(STORE_ID);
 
-        DashboardDTO result = dashboardService.getDashboard();
+        DashboardDTO result = dashboardService.getDashboard(StoreScope.all());
 
         var storeDTO = result.getStores().get(0);
         assertThat(storeDTO.getShiftSalesCount()).isEqualTo(2);
@@ -210,7 +211,7 @@ class DashboardServiceTest {
         when(stockRepository.findByStoreIdAndTenantIdOrderByProductNameAsc(STORE_ID, TENANT_ID))
                 .thenReturn(List.of(stock1, stock2));
 
-        DashboardDTO result = dashboardService.getDashboard();
+        DashboardDTO result = dashboardService.getDashboard(StoreScope.all());
 
         var storeDTO = result.getStores().get(0);
         assertThat(storeDTO.getEstimatedValue()).isEqualByComparingTo("1500.00");
@@ -232,9 +233,32 @@ class DashboardServiceTest {
         stubEmptyInventory(1L);
         stubEmptyInventory(2L);
 
-        DashboardDTO result = dashboardService.getDashboard();
+        DashboardDTO result = dashboardService.getDashboard(StoreScope.all());
 
         assertThat(result.getTotalSalesToday()).isEqualTo(2L);
         assertThat(result.getTotalAmountToday()).isEqualByComparingTo("300.00");
+    }
+
+    // ── getDashboard — locales permitidos (P7) ────────────────────────────────
+
+    @Test
+    void getDashboard_restrictedUser_seesOnlyHisStoresAndTheirSales() {
+        Store storeA = buildStore(1L);
+        Store storeB = buildStore(2L);
+        Sale saleA = buildSale(new BigDecimal("100.00"));          // local 1
+        Sale saleB = buildSale(new BigDecimal("200.00"));
+        saleB.setStore(storeB);                                     // local 2, ajeno
+
+        when(storeRepository.findByTenantIdAndActive(TENANT_ID, true)).thenReturn(List.of(storeA, storeB));
+        when(saleRepository.findByTenantIdAndDateRangeStrict(eq(TENANT_ID), any(), any()))
+                .thenReturn(List.of(saleA, saleB));
+        stubEmptyInventory(1L);
+
+        DashboardDTO result = dashboardService.getDashboard(StoreScope.only(List.of(1L)));
+
+        assertThat(result.getStores()).extracting("storeId").containsExactly(1L);
+        assertThat(result.getTotalSalesToday()).isEqualTo(1L);
+        assertThat(result.getTotalAmountToday()).isEqualByComparingTo("100.00");
+        verify(stockRepository, never()).countLowStockByStoreIdAndTenantId(2L, TENANT_ID);
     }
 }

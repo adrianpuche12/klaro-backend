@@ -1,5 +1,6 @@
 package balance.users.service;
 
+import balance.model.Store;
 import balance.tenant.context.TenantContext;
 import balance.users.dto.RoleRequestDTO;
 import balance.users.dto.RoleResponseDTO;
@@ -21,7 +22,9 @@ import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -284,5 +287,87 @@ class RoleServiceTest {
         roleService.delete(1L);
 
         verify(roleRepository).delete(role);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // P5 — un encargado no da más locales ni módulos de los que tiene
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    private AppUser managerWith(Set<String> modules, Long... storeIds) {
+        Role role = buildRole(2L, "Encargado", 2, true);
+        role.setPermissions(new HashSet<>(modules));
+        AppUser caller = buildCaller(role);
+        Set<Store> stores = new HashSet<>();
+        for (Long id : storeIds) {
+            Store s = new Store();
+            s.setId(id);
+            s.setTenantId(TENANT_A);
+            stores.add(s);
+        }
+        caller.setAccessibleStores(stores);
+        return caller;
+    }
+
+    @Test
+    void grantStores_managerCannotGiveAStoreHeDoesNotHave() {
+        TenantContext.setTenantId(TENANT_A);
+        authenticateAsStaff();
+        when(userRepository.findByKeycloakIdAndTenantId(KEYCLOAK_ID, TENANT_A))
+                .thenReturn(Optional.of(managerWith(Set.of("POS"), 1L)));
+
+        assertThatThrownBy(() -> roleService.assertCanGrantStores(List.of(1L, 2L)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("local");
+    }
+
+    @Test
+    void grantStores_managerCanGiveHisOwnStores() {
+        TenantContext.setTenantId(TENANT_A);
+        authenticateAsStaff();
+        when(userRepository.findByKeycloakIdAndTenantId(KEYCLOAK_ID, TENANT_A))
+                .thenReturn(Optional.of(managerWith(Set.of("POS"), 1L, 2L)));
+
+        assertThatCode(() -> roleService.assertCanGrantStores(List.of(2L))).doesNotThrowAnyException();
+    }
+
+    @Test
+    void grantStores_rootHasNoLimit() {
+        TenantContext.setTenantId(TENANT_A);
+        authenticateAsRoot();
+
+        assertThatCode(() -> roleService.assertCanGrantStores(List.of(1L, 99L))).doesNotThrowAnyException();
+        verifyNoInteractions(userRepository);
+    }
+
+    @Test
+    void grantModules_managerCannotGiveAModuleHeDoesNotHave() {
+        TenantContext.setTenantId(TENANT_A);
+        authenticateAsStaff();
+        when(userRepository.findByKeycloakIdAndTenantId(KEYCLOAK_ID, TENANT_A))
+                .thenReturn(Optional.of(managerWith(Set.of("POS", "SALES_HISTORY"), 1L)));
+
+        assertThatThrownBy(() -> roleService.assertCanGrantModules(Set.of("POS", "TRANSACTIONS")))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("TRANSACTIONS");
+    }
+
+    @Test
+    void grantModules_managerCanGiveASubsetOfHisModules() {
+        TenantContext.setTenantId(TENANT_A);
+        authenticateAsStaff();
+        when(userRepository.findByKeycloakIdAndTenantId(KEYCLOAK_ID, TENANT_A))
+                .thenReturn(Optional.of(managerWith(Set.of("POS", "SALES_HISTORY"), 1L)));
+
+        assertThatCode(() -> roleService.assertCanGrantModules(Set.of("POS"))).doesNotThrowAnyException();
+    }
+
+    @Test
+    void grantModules_callerWithoutRow_isDenied() {
+        TenantContext.setTenantId(TENANT_A);
+        authenticateAsStaff();
+        when(userRepository.findByKeycloakIdAndTenantId(KEYCLOAK_ID, TENANT_A)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> roleService.assertCanGrantModules(Set.of("POS")))
+                .isInstanceOf(AccessDeniedException.class);
     }
 }

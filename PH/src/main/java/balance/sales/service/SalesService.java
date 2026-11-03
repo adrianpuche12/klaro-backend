@@ -85,6 +85,12 @@ public class SalesService {
                     .orElseThrow(() -> new IllegalArgumentException(
                             "Producto no encontrado: " + itemReq.getProductId()));
 
+            // El producto tiene que ser del local del turno: el catálogo y el stock son por
+            // local, y con un producto de otro local se descontaba stock ajeno.
+            if (product.getStore() == null || !store.getId().equals(product.getStore().getId())) {
+                throw new IllegalArgumentException("El producto no pertenece a este local: " + product.getName());
+            }
+
             if (!Boolean.TRUE.equals(product.getActive())) {
                 throw new IllegalArgumentException("Producto inactivo: " + product.getName());
             }
@@ -186,10 +192,19 @@ public class SalesService {
                 .stream().map(SaleResponseDTO::from).toList();
     }
 
-    public DailySummaryDTO getSummaryByStore(Long storeId, LocalDate from, LocalDate to) {
+    /**
+     * Resumen de ventas de un local. {@code onlyUsername != null}: solo las ventas de ese
+     * usuario (alcance "solo mis turnos" del cajero, P7), mismo criterio que los informes.
+     */
+    public DailySummaryDTO getSummaryByStore(Long storeId, LocalDate from, LocalDate to, String onlyUsername) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         Store store = TenantSecurityUtils.requireStore(storeId, tenantId, storeRepository);
         List<Sale> sales = saleRepository.findByStoreIdAndTenantIdAndDateRange(storeId, tenantId, from, to);
+        if (onlyUsername != null) {
+            sales = sales.stream()
+                    .filter(s -> s.getUsername() != null && s.getUsername().equalsIgnoreCase(onlyUsername))
+                    .toList();
+        }
         return buildSummary(sales, store, from != null ? from : tenantConfigService.today());
     }
 

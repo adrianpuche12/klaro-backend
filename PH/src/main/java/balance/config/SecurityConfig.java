@@ -9,6 +9,14 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtDecoders;
+import org.springframework.security.oauth2.jwt.JwtValidators;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.jwt.SupplierJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
@@ -28,6 +36,13 @@ public class SecurityConfig {
 
     @Value("${cors.allowed-origins}")
     private String allowedOriginsConfig;
+
+    @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}")
+    private String issuerUri;
+
+    /** Clientes de Keycloak cuyos tokens acepta la API (claim azp), separados por comas. */
+    @Value("${app.security.allowed-azp:klaro-frontend}")
+    private String allowedAzp;
 
     // Endpoints públicos — no requieren JWT
     private static final String[] PUBLIC_PATHS = {
@@ -55,6 +70,25 @@ public class SecurityConfig {
             );
 
         return http.build();
+    }
+
+    /**
+     * Decoder del JWT: firma (JWKS del realm), vencimiento, issuer y además el cliente que
+     * pidió el token ({@link AzpValidator}). Reemplaza al decoder que arma Spring Boot con
+     * {@code issuer-uri}, que solo valida el issuer. Es perezoso (SupplierJwtDecoder): la
+     * configuración del realm se descarga con el primer token, igual que antes, así que el
+     * arranque no depende de que Keycloak esté arriba.
+     */
+    @Bean
+    public JwtDecoder jwtDecoder() {
+        OAuth2TokenValidator<Jwt> validator = new DelegatingOAuth2TokenValidator<>(
+                JwtValidators.createDefaultWithIssuer(issuerUri),
+                AzpValidator.fromCsv(allowedAzp));
+        return new SupplierJwtDecoder(() -> {
+            NimbusJwtDecoder decoder = JwtDecoders.fromIssuerLocation(issuerUri);
+            decoder.setJwtValidator(validator);
+            return decoder;
+        });
     }
 
     /**

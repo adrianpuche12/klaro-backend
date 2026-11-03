@@ -5,6 +5,7 @@ import balance.model.Transaction;
 import balance.repository.StoreRepository;
 import balance.repository.TransactionRepository;
 import balance.tenant.context.TenantContext;
+import balance.users.service.PermissionGuard.StoreScope;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /** Una transacción nunca puede quedar asociada al local de otra empresa. */
@@ -70,5 +72,24 @@ class BalanceServiceTest {
 
         assertThatCode(() -> balanceService.saveTransaction(new Transaction())).doesNotThrowAnyException();
         verifyNoInteractions(storeRepository);
+    }
+
+    @Test
+    void calculateBalance_restrictedUser_onlyCountsHisStores() {
+        // P2: el balance de Finanzas no puede incluir los montos de locales ajenos.
+        Store mine = new Store(); mine.setId(1L);
+        Store other = new Store(); other.setId(2L);
+        Transaction income = new Transaction();
+        income.setType("income"); income.setAmount(new java.math.BigDecimal("100")); income.setStore(mine);
+        Transaction foreignIncome = new Transaction();
+        foreignIncome.setType("income"); foreignIncome.setAmount(new java.math.BigDecimal("900")); foreignIncome.setStore(other);
+        when(transactionRepository.findByTenantIdAndDateRange(eq(TENANT_ID), any(), any()))
+                .thenReturn(java.util.List.of(income, foreignIncome));
+
+        var start = java.time.LocalDate.of(2026, 11, 1);
+        assertThat(balanceService.calculateBalance(start, start, StoreScope.only(java.util.List.of(1L))))
+                .isEqualByComparingTo("100");
+        assertThat(balanceService.calculateBalance(start, start, StoreScope.all()))
+                .isEqualByComparingTo("1000");
     }
 }

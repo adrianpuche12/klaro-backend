@@ -12,16 +12,17 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v2/roles")
-@CrossOrigin(origins = "*")
 public class RoleController {
 
     @Autowired
     private RoleService roleService;
 
     /** Root ve todos los Roles del tenant; un usuario con canManageUsers=true
-     * ve solo los que puede asignar (nivel mayor al suyo). */
+     * ve solo los que puede asignar (nivel mayor al suyo). Cualquier otro usuario
+     * (ej. un cajero) recibe 403: antes este endpoint no tenía guard. */
     @GetMapping
     public ResponseEntity<?> findAll() {
+        roleService.assertCanManageUsers();
         return ResponseEntity.ok(roleService.findAll());
     }
 
