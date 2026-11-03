@@ -10,7 +10,6 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v2/dashboard")
-@CrossOrigin(origins = "*")
 public class DashboardController {
 
     @Autowired
@@ -19,14 +18,14 @@ public class DashboardController {
     @Autowired
     private PermissionGuard permissionGuard;
 
-    // Resumen global del sistema para el admin: turnos activos, ventas del dia e inventario.
-    // NOTA: gate a nivel de modulo solamente -- el agregado sigue siendo de TODOS los
-    // locales del tenant. Filtrar el agregado por accessibleStores de un perfil acotado
-    // requiere cambios en DashboardService, no cubierto en esta pasada (ver SPRINT-09).
+    // Resumen del día para el panel: turnos activos, ventas del día e inventario.
+    // P7 (Etapa 1): el agregado se limita a los locales permitidos del usuario (root y las
+    // cuentas sin perfil acotado ven todos). Muestra el turno ABIERTO de cada local, que
+    // cualquier alcance de lectura de turnos ya puede ver (ver ShiftAccessService).
     @GetMapping
     public ResponseEntity<DashboardDTO> getDashboard() {
         permissionGuard.assertAccess(PermissionModule.DASHBOARD);
-        return ResponseEntity.ok(dashboardService.getDashboard());
+        return ResponseEntity.ok(dashboardService.getDashboard(permissionGuard.storeScope()));
     }
 }
 

@@ -13,6 +13,7 @@ import balance.sales.repository.SaleRepository;
 import balance.sales.repository.ShiftRepository;
 import balance.tenant.context.TenantSecurityUtils;
 import balance.common.enums.ShiftStatus;
+import balance.users.service.PermissionGuard.StoreScope;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,18 +37,28 @@ public class DashboardService {
     @Autowired private InventoryStockRepository stockRepository;
     @Autowired private ProductRepository        productRepository;
 
+    /**
+     * Resumen del día de los locales que el usuario puede ver ({@code scope}, P7): los
+     * locales, los turnos abiertos y los totales de ventas se limitan a esos locales.
+     */
     @Transactional(readOnly = true)
-    public DashboardDTO getDashboard() {
+    public DashboardDTO getDashboard(StoreScope scope) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         LocalDate today = tenantConfigService.today();
 
-        List<Store> activeStores = storeRepository.findByTenantIdAndActive(tenantId, true);
+        List<Store> activeStores = storeRepository.findByTenantIdAndActive(tenantId, true).stream()
+                .filter(scope::allows)
+                .toList();
 
         // Batch: 1 query para todas las ventas de hoy (reemplaza 2N queries por local)
-        List<Sale> todaySales = saleRepository.findByTenantIdAndDateRangeStrict(tenantId, today, today);
+        List<Sale> todaySales = saleRepository.findByTenantIdAndDateRangeStrict(tenantId, today, today).stream()
+                .filter(s -> scope.allows(s.getStore()))
+                .toList();
 
         // Batch: 1 query para todos los turnos abiertos (reemplaza N queries por local)
-        List<Shift> openShifts = shiftRepository.findByTenantIdAndStatus(tenantId, ShiftStatus.OPEN);
+        List<Shift> openShifts = shiftRepository.findByTenantIdAndStatus(tenantId, ShiftStatus.OPEN).stream()
+                .filter(sh -> scope.allows(sh.getStore()))
+                .toList();
         Map<Long, Shift> shiftByStore = openShifts.stream()
                 .collect(Collectors.toMap(sh -> sh.getStore().getId(), sh -> sh));
 

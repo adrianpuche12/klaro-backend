@@ -103,6 +103,7 @@ class SalesServiceTest {
         p.setPrice(price);
         p.setActive(true);
         p.setTenantId(TENANT_ID);
+        p.setStore(buildStore(1L, "Danli")); // mismo local que el turno de buildShift
         return p;
     }
 
@@ -293,6 +294,21 @@ class SalesServiceTest {
         assertThatThrownBy(() -> salesService.createSale(1L, buildRequest("cajero", 1L, 1)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Producto inactivo");
+    }
+
+    @Test
+    void createSale_throwsWhenProductIsFromAnotherStore_andTouchesNoStock() {
+        // Mismo tenant, otro local: antes se vendía y se descontaba el stock del local ajeno.
+        Product ajeno = buildProduct(1L, "Pollo", new BigDecimal("100.00"));
+        ajeno.setStore(buildStore(2L, "Paraiso"));
+        when(shiftRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildShift(1L, ShiftStatus.OPEN)));
+        when(productRepository.findById(1L)).thenReturn(Optional.of(ajeno));
+
+        assertThatThrownBy(() -> salesService.createSale(1L, buildRequest("cajero", 1L, 1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("no pertenece a este local");
+        verify(saleRepository, never()).save(any());
+        verifyNoInteractions(inventoryService);
     }
 
     // ── createSale — stock ────────────────────────────────────────────────────
