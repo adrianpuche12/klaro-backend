@@ -2,6 +2,7 @@ package balance.users.controller;
 
 import balance.users.dto.AppUserResponseDTO;
 import balance.users.service.AppUserService;
+import balance.users.service.PermissionGuard;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +29,7 @@ class AppUserControllerTest {
     @Autowired private ObjectMapper objectMapper;
 
     @MockBean private AppUserService userService;
+    @MockBean private PermissionGuard permissionGuard;
 
     // â”€â”€ GET /api/v2/users â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -54,7 +56,8 @@ class AppUserControllerTest {
     // â”€â”€ GET /api/v2/users/by-username/{username} â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @Test
-    void findByUsername_returns200WhenFound() throws Exception {
+    void findByUsername_ownProfile_returns200() throws Exception {
+        when(permissionGuard.currentUsername()).thenReturn("cajero01");
         when(userService.findByUsername("cajero01")).thenReturn(buildUserResponse("cajero01", "ACTIVE"));
 
         mockMvc.perform(get("/api/v2/users/by-username/cajero01"))
@@ -64,7 +67,30 @@ class AppUserControllerTest {
     }
 
     @Test
+    void findByUsername_otherUsersProfile_isForbidden_forNonManager() throws Exception {
+        // P9: antes cualquiera veía rol, módulos y locales de cualquier usuario.
+        when(permissionGuard.currentUsername()).thenReturn("cajero01");
+        when(permissionGuard.canManageUsers()).thenReturn(false);
+
+        mockMvc.perform(get("/api/v2/users/by-username/encargado01"))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(userService);
+    }
+
+    @Test
+    void findByUsername_otherUsersProfile_isAllowed_forManagerOrRoot() throws Exception {
+        when(permissionGuard.currentUsername()).thenReturn("encargado01");
+        when(permissionGuard.canManageUsers()).thenReturn(true);
+        when(userService.findByUsername("cajero01")).thenReturn(buildUserResponse("cajero01", "ACTIVE"));
+
+        mockMvc.perform(get("/api/v2/users/by-username/cajero01"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void findByUsername_returns404WhenNotFound() throws Exception {
+        when(permissionGuard.currentUsername()).thenReturn("desconocido");
         when(userService.findByUsername("desconocido"))
                 .thenThrow(new IllegalArgumentException("Usuario no encontrado: desconocido"));
 

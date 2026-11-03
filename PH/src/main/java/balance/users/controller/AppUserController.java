@@ -3,6 +3,7 @@ package balance.users.controller;
 import balance.users.dto.AppUserRequestDTO;
 import balance.users.dto.AppUserResponseDTO;
 import balance.users.service.AppUserService;
+import balance.users.service.PermissionGuard;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -23,11 +24,13 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/v2/users")
-@CrossOrigin(origins = "*")
 public class AppUserController {
 
     @Autowired
     private AppUserService userService;
+
+    @Autowired
+    private PermissionGuard permissionGuard;
 
     /** Lista todos los usuarios del tenant. Root, o cualquier Role con canManageUsers=true. */
     @PreAuthorize("hasAnyRole('root', 'staff')")
@@ -36,9 +39,16 @@ public class AppUserController {
         return ResponseEntity.ok(userService.findAll());
     }
 
-    /** Perfil de un usuario por username. Accesible para todos los roles autenticados. */
+    /**
+     * Perfil de un usuario por username (rol, módulos y locales). P9: atado al token —
+     * cada usuario ve solo el suyo; el de otro, solo root o quien gestiona usuarios.
+     * El frontend lo usa al iniciar sesión con el propio usuario (AuthContext).
+     */
     @GetMapping("/by-username/{username}")
     public ResponseEntity<?> findByUsername(@PathVariable String username) {
+        if (!username.equalsIgnoreCase(permissionGuard.currentUsername()) && !permissionGuard.canManageUsers()) {
+            throw new AccessDeniedException("Solo podés ver tu propio perfil");
+        }
         try {
             return ResponseEntity.ok(userService.findByUsername(username));
         } catch (IllegalArgumentException e) {
