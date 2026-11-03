@@ -18,8 +18,11 @@ public interface SaleRepository extends JpaRepository<Sale, Long> {
     /** Busca una venta por id validando que pertenezca al tenant. */
     Optional<Sale> findByIdAndTenantId(Long id, Long tenantId);
 
+    // COALESCE en vez de "(:from IS NULL OR …)": con ese patrón Postgres no puede inferir el
+    // tipo del parámetro ("could not determine data type of parameter") y la consulta fallaba
+    // siempre. Con COALESCE el tipo sale de la columna; null sigue significando "sin límite".
     @Query("SELECT s FROM Sale s WHERE s.store.id = :storeId AND s.tenantId = :tenantId " +
-           "AND (:from IS NULL OR s.saleDate >= :from) AND (:to IS NULL OR s.saleDate <= :to) " +
+           "AND s.saleDate >= COALESCE(:from, s.saleDate) AND s.saleDate <= COALESCE(:to, s.saleDate) " +
            "ORDER BY s.createdAt DESC")
     List<Sale> findByStoreIdAndTenantIdAndDateRange(
             @Param("storeId") Long storeId,
