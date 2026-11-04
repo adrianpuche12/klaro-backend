@@ -191,6 +191,23 @@
                     <argLine>@{argLine} -Dfile.encoding=UTF-8</argLine>
                 </configuration>
             </plugin>
+            <!-- Tests de integración (*IT.java): corren en `mvn verify`, después de los unitarios.
+                 Surefire no los toma (solo *Test/*Tests), así que sin Failsafe nunca corrían. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <argLine>@{argLine} -Dfile.encoding=UTF-8</argLine>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>

@@ -28,7 +28,7 @@ public class TenantSecurityUtils {
      */
     public static Store requireStore(Long storeId, Long tenantId, StoreRepository storeRepository) {
         return storeRepository.findByIdAndTenantId(storeId, tenantId)
-                .orElseThrow(() -> new IllegalArgumentException(
+                .orElseThrow(() -> new RecursoNoEncontradoException(
                         "Local no encontrado o no pertenece a este tenant"));
     }
 }

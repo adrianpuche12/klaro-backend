@@ -1,5 +1,6 @@
 package balance.sales.service;
 
+import balance.tenant.context.RecursoNoEncontradoException;
 import balance.common.enums.ShiftStatus;
 import balance.sales.dto.ShiftExpenseRequestDTO;
 import balance.sales.dto.ShiftExpenseResponseDTO;
@@ -26,7 +27,7 @@ public class ShiftExpenseService {
     public ShiftExpenseResponseDTO addExpense(Long shiftId, ShiftExpenseRequestDTO dto) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         Shift shift = shiftRepository.findByIdAndTenantId(shiftId, tenantId)
-                .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Turno no encontrado"));
         if (ShiftStatus.CLOSED == shift.getStatus()) {
             throw new IllegalStateException("No se pueden registrar egresos en un turno cerrado");
         }

@@ -1,5 +1,6 @@
 package balance.users.service;
 
+import balance.tenant.context.RecursoNoEncontradoException;
 import balance.model.Store;
 import balance.tenant.context.TenantSecurityUtils;
 import balance.users.dto.RoleRequestDTO;
@@ -209,7 +210,7 @@ public class RoleService {
 
     public Role findOrThrow(Long id, Long tenantId) {
         return roleRepository.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(() -> new IllegalArgumentException("Role no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Role no encontrado"));
     }
 
     private Long currentAppUserId(Long tenantId) {

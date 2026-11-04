@@ -22,13 +22,45 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Compilar y ejecutar tests
+      # verify = unitarios (Surefire, *Test) + integración (Failsafe, *IT: repositorios con
+      # Testcontainers, HTTP entre empresas y matriz de permisos). Docker viene en el runner.
+      - name: Compilar y ejecutar tests (unitarios + integración)
         working-directory: ./PH
-        run: mvn clean test -B -e
+        run: mvn clean verify -B -e
         env:
           DB_URL: ${{ secrets.DB_URL_DEV }}
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+
+      - name: Resumen de tests
+        if: always()
+        working-directory: ./PH
+        run: |
+          {
+            echo "### Tests"
+            echo "| Tipo | Clases | Tests | Fallas | Errores | Salteados |"
+            echo "|---|---|---|---|---|---|"
+            for tipo in surefire failsafe; do
+              dir="target/${tipo}-reports"
+              [ -d "$dir" ] || continue
+              t=0; f=0; e=0; s=0; n=0
+              for x in "$dir"/TEST-*.xml; do
+                [ -f "$x" ] || continue
+                n=$((n+1))
+                h=$(grep -o '<testsuite [^>]*>' "$x" | head -1)
+                t=$((t+$(echo "$h" | sed -E 's/.* tests="([0-9]+)".*/\1/')))
+                f=$((f+$(echo "$h" | sed -E 's/.* failures="([0-9]+)".*/\1/')))
+                e=$((e+$(echo "$h" | sed -E 's/.* errors="([0-9]+)".*/\1/')))
+                s=$((s+$(echo "$h" | sed -E 's/.* skipped="([0-9]+)".*/\1/')))
+              done
+              echo "| $tipo | $n | $t | $f | $e | $s |"
+            done
+            echo
+            echo "Integración (*IT):"
+            ls target/failsafe-reports/TEST-*.xml 2>/dev/null | sed -E 's|.*/TEST-balance\.||; s|\.xml$||; s|^|- |'
+          } >> "$GITHUB_STEP_SUMMARY"
+      # Sin subir los reportes como artifact a propósito: el repo es público y la salida
+      # capturada de los tests no pasa por el enmascarado de secrets de Actions.
 
   build-and-deploy:
     name: Build imagen y deploy a Contabo

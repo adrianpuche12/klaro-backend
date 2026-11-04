@@ -1,7 +1,9 @@
 package balance.tax.service;
 
 import balance.catalog.model.Product;
+import balance.catalog.repository.CategoryRepository;
 import balance.catalog.repository.ProductRepository;
+import balance.tenant.context.RecursoNoEncontradoException;
 import balance.tax.dto.TaxDTO;
 import balance.tax.model.Tax;
 import balance.tax.repository.TaxRepository;
@@ -20,6 +22,7 @@ public class TaxService {
 
     @Autowired private TaxRepository taxRepository;
     @Autowired private ProductRepository productRepository;
+    @Autowired private CategoryRepository categoryRepository;
 
     public List<TaxDTO> findAll() {
         Long tenantId = TenantSecurityUtils.requireTenantId();
@@ -36,7 +39,7 @@ public class TaxService {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         Tax tax = new Tax();
         tax.setTenantId(tenantId);
-        applyDTO(tax, dto);
+        applyDTO(tax, dto, tenantId);
         return TaxDTO.from(taxRepository.save(tax));
     }
 
@@ -44,7 +47,7 @@ public class TaxService {
     public Optional<TaxDTO> update(Long id, TaxDTO dto) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         return taxRepository.findByIdAndTenantId(id, tenantId).map(tax -> {
-            applyDTO(tax, dto);
+            applyDTO(tax, dto, tenantId);
             return TaxDTO.from(taxRepository.save(tax));
         });
     }
@@ -98,7 +101,15 @@ public class TaxService {
         }
     }
 
-    private void applyDTO(Tax tax, TaxDTO dto) {
+    private void applyDTO(Tax tax, TaxDTO dto, Long tenantId) {
+        // El producto o la categoría tienen que ser de esta empresa: Postgres no aplica RLS a
+        // ids sueltos y antes se aceptaba un impuesto sobre el producto de otra (CrossTenantHttpIT).
+        if (dto.getProductId() != null && !productRepository.existsByIdAndTenantId(dto.getProductId(), tenantId)) {
+            throw new RecursoNoEncontradoException("Producto no encontrado");
+        }
+        if (dto.getCategoryId() != null && !categoryRepository.existsByIdAndTenantId(dto.getCategoryId(), tenantId)) {
+            throw new RecursoNoEncontradoException("Categoría no encontrada");
+        }
         if (dto.getName()       != null) tax.setName(dto.getName().trim());
         if (dto.getRate()       != null) tax.setRate(dto.getRate());
         if (dto.getType()       != null) tax.setType(dto.getType());

@@ -153,9 +153,9 @@ class SaleRepositoryIT {
         saveSale(SaleStatus.CONFIRMED, new BigDecimal("100.00"));
 
         List<Sale> open = saleRepository.findByShiftIdAndStatusAndTenantId(
-                shift.getId(), "OPEN", TENANT_ID);
+                shift.getId(), SaleStatus.OPEN, TENANT_ID);
         List<Sale> confirmed = saleRepository.findByShiftIdAndStatusAndTenantId(
-                shift.getId(), "CONFIRMED", TENANT_ID);
+                shift.getId(), SaleStatus.CONFIRMED, TENANT_ID);
 
         assertThat(open).hasSize(2);
         assertThat(confirmed).hasSize(1);

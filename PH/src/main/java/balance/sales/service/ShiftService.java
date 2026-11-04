@@ -1,5 +1,6 @@
 package balance.sales.service;
 
+import balance.tenant.context.RecursoNoEncontradoException;
 import balance.tenant.service.TenantConfigService;
 import balance.common.enums.ShiftStatus;
 import balance.model.Store;
@@ -70,7 +71,7 @@ public class ShiftService {
     public ShiftResponseDTO closeShift(Long shiftId) {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         Shift shift = shiftRepository.findForUpdate(shiftId, tenantId)
-                .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Turno no encontrado"));
         if (ShiftStatus.CLOSED == shift.getStatus()) {
             throw new IllegalStateException("El turno ya está cerrado");
         }
@@ -109,7 +110,7 @@ public class ShiftService {
         Long tenantId = TenantSecurityUtils.requireTenantId();
         return shiftRepository.findByIdAndTenantId(shiftId, tenantId)
                 .map(ShiftResponseDTO::from)
-                .orElseThrow(() -> new IllegalArgumentException("Turno no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Turno no encontrado"));
     }
 
     private String generateCode(Store store) {
