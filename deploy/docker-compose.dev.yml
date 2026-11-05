@@ -4,5 +4,11 @@ services:
     container_name: belopia-backend-dev
     restart: unless-stopped
     ports:
-      - "8111:8080"
+      - "127.0.0.1:8111:8080"   # solo nginx (dev-api.belopia.app) lo alcanza
     env_file: .env
+    # Rotación propia (el daemon del servidor compartido trae 100m y 1 archivo): 5 x 20 MB.
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"

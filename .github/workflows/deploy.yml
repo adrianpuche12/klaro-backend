@@ -78,14 +78,21 @@ jobs:
       - name: Checkout código
         uses: actions/checkout@v4
 
+      # Cada imagen sale con dos etiquetas: la "móvil" que usa el compose (latest / dev-latest) y la
+      # del commit (sha-<7>), que es la que se despliega y permite volver atrás.
       - name: Determinar tag de imagen
         id: vars
         run: |
+          echo "sha_tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
             echo "tag=latest" >> "$GITHUB_OUTPUT"
+            echo "amb=prod" >> "$GITHUB_OUTPUT"
+            echo "puerto=8110" >> "$GITHUB_OUTPUT"
             echo "compose_dir=/opt/belopia/prod" >> "$GITHUB_OUTPUT"
           else
             echo "tag=dev-latest" >> "$GITHUB_OUTPUT"
+            echo "amb=dev" >> "$GITHUB_OUTPUT"
+            echo "puerto=8111" >> "$GITHUB_OUTPUT"
             echo "compose_dir=/opt/belopia/dev" >> "$GITHUB_OUTPUT"
           fi
 
@@ -100,16 +107,33 @@ jobs:
         with:
           context: ./PH
           push: true
-          tags: adrianpuche/belopia-backend:${{ steps.vars.outputs.tag }}
+          tags: |
+            adrianpuche/belopia-backend:${{ steps.vars.outputs.tag }}
+            adrianpuche/belopia-backend:${{ steps.vars.outputs.sha_tag }}
+          # desplegar.sh limpia solo las imágenes sin etiqueta que tengan este label (servidor compartido).
+          labels: |
+            org.opencontainers.image.title=belopia-backend
+            org.opencontainers.image.revision=${{ github.sha }}
 
-      - name: Deploy en Contabo (SSH)
+      - name: Copiar script de deploy al servidor
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: deploy/ci/desplegar.sh
+          target: ${{ steps.vars.outputs.compose_dir }}
+          strip_components: 2
+
+      # Chequeo de salud y rollback automático: si /actuator/health no da UP en 90 s, vuelve a la
+      # imagen anterior y el job queda en rojo (GitHub avisa por mail). Ver deploy/ci/desplegar.sh.
+      - name: Deploy en Contabo (SSH) con chequeo de salud y rollback
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 15m
           script: |
             cd ${{ steps.vars.outputs.compose_dir }}
-            docker compose pull
-            docker compose up -d
-            docker image prune -f
+            bash desplegar.sh ${{ steps.vars.outputs.amb }} adrianpuche/belopia-backend:${{ steps.vars.outputs.sha_tag }} ${{ steps.vars.outputs.puerto }}
