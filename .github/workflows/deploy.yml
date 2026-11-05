@@ -110,6 +110,8 @@ jobs:
           tags: |
             adrianpuche/belopia-backend:${{ steps.vars.outputs.tag }}
             adrianpuche/belopia-backend:${{ steps.vars.outputs.sha_tag }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
           # desplegar.sh limpia solo las imágenes sin etiqueta que tengan este label (servidor compartido).
           labels: |
             org.opencontainers.image.title=belopia-backend
