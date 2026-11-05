@@ -121,7 +121,7 @@ final class PermissionMatrix {
             GET    | /api/v2/shifts/3                           | -              | OK  | OK  | 403 | 403 | turno cerrado del encargado
 
             # ── Stock (INVENTORY; salida/ajuste solo encargado) ──
-            GET    | /api/v2/stores/1/stock                     | -              | OK  | OK  | 403 | 403 |
+            GET    | /api/v2/stores/1/stock                     | -              | OK  | OK  | OK  | 403 | el POS vende sobre el stock de su local
             GET    | /api/v2/stores/1/stock/low                 | -              | OK  | OK  | 403 | 403 |
             GET    | /api/v2/stores/1/stock/summary             | -              | OK  | OK  | 403 | 403 |
             GET    | /api/v2/stores/1/stock/movements           | -              | OK  | OK  | 403 | 403 |
@@ -130,7 +130,8 @@ final class PermissionMatrix {
             POST   | /api/v2/stores/1/stock/adjustment          | $SALIDA        | OK  | OK  | 403 | 403 |
 
             # ── Catálogo (CATALOG; escribir solo encargado) ──
-            GET    | /api/v2/stores/1/categories                | -              | OK  | OK  | 403 | 403 |
+            GET    | /api/v2/stores/1/categories                | -              | OK  | OK  | OK  | 403 | el POS filtra por categoría
+            GET    | /api/v2/stores/3/categories                | -              | OK  | 403 | 403 | 403 | local no asignado
             GET    | /api/v2/categories/1                       | -              | OK  | OK  | 403 | 403 |
             POST   | /api/v2/stores/1/categories                | $CATEGORIA     | OK  | OK  | 403 | 403 |
             POST   | /api/v2/stores/1/categories/1/children     | $CATEGORIA     | OK  | OK  | 403 | 403 |
