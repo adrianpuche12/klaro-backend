@@ -298,6 +298,8 @@ networks:
 
 ## 8. CI/CD — GitHub Actions
 
+> **Belopia:** este documento describe PH v2. El deploy de Belopia (imagen `sha-<7>`, chequeo de salud con rollback automático, rotación de logs) está en [`deploy/README.md`](../deploy/README.md).
+
 **Repositorios GitHub:**
 - Backend: `https://github.com/adrianpuche12/PH-Backend-v2`
 - Frontend: `https://github.com/adrianpuche12/PH-Frontend-v2`
