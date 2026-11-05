@@ -26,7 +26,8 @@ public class InventoryController {
 
     @GetMapping("/stores/{storeId}/stock")
     public ResponseEntity<List<StockItemDTO>> getStock(@PathVariable Long storeId) {
-        permissionGuard.assertAccess(PermissionModule.INVENTORY, storeId);
+        // El POS (cajero) vende sobre el stock de su local; ajustes y movimientos siguen pidiendo INVENTORY.
+        permissionGuard.assertAccessAny(storeId, PermissionModule.INVENTORY, PermissionModule.POS);
         return ResponseEntity.ok(inventoryService.getStock(storeId));
     }
 
