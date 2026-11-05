@@ -6,3 +6,9 @@ services:
     ports:
       - "8110:8080"
     env_file: .env
+    # Rotación propia (el daemon del servidor compartido trae 100m y 1 archivo): 5 x 20 MB.
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
