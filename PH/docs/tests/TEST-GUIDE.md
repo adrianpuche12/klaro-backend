@@ -527,7 +527,7 @@ cuando una pantalla necesita leer datos de otro módulo sin poder modificarlos:
 - `GET /api/v2/stores/{id}/stock` → `INVENTORY` **o** `POS`.
 
 Así un cajero con solo `POS` ve el catálogo y el stock de su local, pero no puede ajustar stock
-ni editar categorías (esos endpoints siguen con `assertManage` del módulo propio) ni leer un local
+ni editar categorías (el resto de los endpoints de inventario y catálogo siguen exigiendo `INVENTORY` o `CATALOG`) ni leer un local
 no asignado (fila `GET /api/v2/stores/3/categories` → `403` para los roles acotados).
 
 Regla: no dar un módulo de más a un rol para que una pantalla funcione. Si una pantalla necesita
