@@ -7,6 +7,9 @@
 name: Pruebas de carga (k6)
 
 on:
+  # TEMPORAL (primera corrida del PR 3): se saca en el ultimo commit del PR.
+  push:
+    branches: [feat/load-escenarios]
   # Ojo: workflow_dispatch solo aparece cuando este archivo esta en la rama por defecto (main).
   workflow_dispatch:
     inputs:
