@@ -49,6 +49,18 @@ sano() {
 ANTERIOR="$(docker inspect -f '{{.Image}}' "$CONTENEDOR" 2>/dev/null || true)"
 log "corriendo ahora: ${ANTERIOR:-ninguna}"
 
+# Si el contenedor que corre es de otro proyecto de Compose (p. ej. el viejo `dev`, compartido con
+# PH v2 e Iurivia) y el compose de esta carpeta ya tiene `name: belopia-<amb>`, `up` choca con el
+# container_name. No se resuelve solo: el pase se hace a mano (deploy/README.md, "Proyecto de
+# Compose propio"), sin borrar el contenedor viejo.
+ESPERADO="$(docker compose config 2>/dev/null | sed -n 's/^name: //p' | head -1)"
+ACTUAL="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$CONTENEDOR" 2>/dev/null || true)"
+if [ -n "$ANTERIOR" ] && [ -n "$ESPERADO" ] && [ "$ACTUAL" != "$ESPERADO" ]; then
+  log "ERROR: $CONTENEDOR es del proyecto '${ACTUAL:-ninguno}' y este compose es '$ESPERADO'."
+  log "Hacer el pase a mano (deploy/README.md). No se cambió nada."
+  exit 2
+fi
+
 # Si no está en el registro (prueba manual con una imagen local), alcanza con que exista acá.
 docker pull -q "$NUEVA" 2>/dev/null || docker image inspect "$NUEVA" >/dev/null
 SHA_TAG="${NUEVA##*:}"                      # sha-xxxxxxx

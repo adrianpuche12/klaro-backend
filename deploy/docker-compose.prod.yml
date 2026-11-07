@@ -1,3 +1,7 @@
+# Proyecto de Compose propio: sin `name`, Compose usa el nombre de la carpeta (`prod`), que en
+# Contabo comparten PH v2 e Iurivia, y un `--remove-orphans` borraría sus contenedores.
+name: belopia-prod
+
 services:
   belopia-backend-prod:
     image: adrianpuche/belopia-backend:latest
