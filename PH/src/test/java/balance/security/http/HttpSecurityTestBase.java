@@ -69,7 +69,10 @@ import java.util.concurrent.atomic.AtomicInteger;
         "logging.level.org.springframework.web=WARN",
         "logging.level.org.springframework.web.filter=WARN",
         "logging.level.org.springframework.web.cors=WARN",
-        "spring.jpa.show-sql=false"
+        "spring.jpa.show-sql=false",
+        // La matriz y el catálogo entre empresas hacen cientos de pedidos por minuto con el mismo
+        // usuario: acá no se prueba el rate limit (eso es RateLimitHttpIT). Las IPs ya rotan.
+        "app.rate-limit.user-per-min=1000000"
 })
 @Import(HttpSecurityTestBase.TestJwtConfig.class)
 abstract class HttpSecurityTestBase {
@@ -189,7 +192,11 @@ abstract class HttpSecurityTestBase {
 
     // ── HTTP ─────────────────────────────────────────────────────────────────
 
-    record Respuesta(int status, String body) {
+    record Respuesta(int status, String body, String retryAfter) {
+        Respuesta(int status, String body) {
+            this(status, body, null);
+        }
+
         boolean es2xx() {
             return status >= 200 && status < 300;
         }
@@ -224,6 +231,15 @@ abstract class HttpSecurityTestBase {
     }
 
     Respuesta llamar(String metodo, String ruta, String body, String token) {
+        // RateLimitingFilter limita por IP los pedidos sin token y pone un techo por IP. Tomcat
+        // (forward-headers-strategy=native) toma X-Forwarded-For porque el test se conecta desde
+        // 127.0.0.1, que es un proxy interno: una IP pública de documentación (RFC 5737) distinta
+        // cada 50 pedidos.
+        return llamarDesde(ipDePrueba(IP.getAndIncrement() / 50), metodo, ruta, body, token);
+    }
+
+    /** Como {@link #llamar}, pero desde una IP fija (X-Forwarded-For): para los tests del rate limit. */
+    Respuesta llamarDesde(String ip, String metodo, String ruta, String body, String token) {
         boolean multipart = MULTIPART_PNG.equals(body);
         HttpRequest.BodyPublisher publisher = body == null
                 ? HttpRequest.BodyPublishers.noBody()
@@ -233,10 +249,7 @@ abstract class HttpSecurityTestBase {
         HttpRequest.Builder req = HttpRequest.newBuilder(URI.create("http://localhost:" + port + ruta))
                 .timeout(Duration.ofSeconds(30))
                 .method(metodo, publisher)
-                // RateLimitingFilter limita 100 pedidos/min por IP. Tomcat (forward-headers-strategy
-                // =native) toma X-Forwarded-For porque el test se conecta desde 127.0.0.1, que es un
-                // proxy interno: una IP pública de documentación (RFC 5737) distinta cada 50 pedidos.
-                .header("X-Forwarded-For", ipDePrueba(IP.getAndIncrement() / 50));
+                .header("X-Forwarded-For", ip);
         if (body != null) {
             req.header("Content-Type", multipart ? "multipart/form-data; boundary=" + BOUNDARY : "application/json");
         }
@@ -245,7 +258,8 @@ abstract class HttpSecurityTestBase {
         }
         try {
             HttpResponse<byte[]> res = http.send(req.build(), HttpResponse.BodyHandlers.ofByteArray());
-            return new Respuesta(res.statusCode(), new String(res.body(), StandardCharsets.UTF_8));
+            return new Respuesta(res.statusCode(), new String(res.body(), StandardCharsets.UTF_8),
+                    res.headers().firstValue("Retry-After").orElse(null));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         } catch (InterruptedException e) {
