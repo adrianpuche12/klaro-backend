@@ -39,8 +39,8 @@ if [ ! -f "$GEN/load.env" ]; then
         echo "DB_APP_PASSWORD=$(clave)"
         echo "KEYCLOAK_ADMIN_PASSWORD=$(clave)"
         echo "KEYCLOAK_ADMIN_CLIENT_SECRET=$(clave)"
-        echo "MINIO_USER=carga$(openssl rand -hex 4)"
-        echo "MINIO_PASSWORD=$(clave)"
+        echo "S3_ACCESS_KEY=carga$(openssl rand -hex 4)"   # s3mock no valida firmas: solo para que el backend arranque
+        echo "S3_SECRET_KEY=$(clave)"
         echo "LOAD_USER_PASSWORD=Carga-$(clave)"
         if [ "${LOAD_RATE_LIMIT_PROD:-}" = 1 ]; then
             # valores de PROD (los de la tabla): solo para rate-limit.js
@@ -62,8 +62,8 @@ if [ "${LOAD_SIN_BUILD:-}" != 1 ]; then
     docker build -q -t belopia-backend:load ./PH >/dev/null
 fi
 
-echo "== levantando postgres, keycloak, minio y backend"
-"${DC[@]}" up -d --no-build postgres keycloak minio backend
+echo "== levantando postgres, keycloak, s3 y backend"
+"${DC[@]}" up -d --no-build postgres keycloak s3 backend
 
 esperar() { # $1 descripcion, $2.. comando
     local desc="$1"; shift

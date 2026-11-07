@@ -1,6 +1,6 @@
 # Mejora continua v4 (k6): ambiente DESCARTABLE para pruebas de carga de Belopia.
 # Corre solo en el runner de GitHub Actions (load.yml) o en un docker local, con tests/load/ambiente/levantar.sh.
-# No toca ningun servidor: base, Keycloak y almacenamiento propios, en una red de Docker SIN salida a internet
+# No toca ningun servidor: base, Keycloak y S3 propios, en una red de Docker SIN salida a internet
 # (internal: true) y sin puertos publicados. k6 corre como contenedor dentro de la misma red.
 # Las claves salen de tests/load/.generado/load.env (las genera levantar.sh en cada corrida; .generado esta en
 # .gitignore). Ninguna clave en el repo.
@@ -51,15 +51,14 @@ services:
     mem_limit: 1g
     cpus: 1.0
 
-  minio:
-    # En lugar de R2: los escenarios no suben archivos, pero el backend arranca con un S3 propio y nunca con R2.
-    image: minio/minio:RELEASE.2024-10-13T13-34-11Z
-    command: ["server", "/data"]
+  s3:
+    # En lugar de R2: S3 de prueba (adobe/s3mock; MinIO dejo de publicar imagenes en Docker Hub). Los escenarios
+    # no suben archivos, pero el backend arranca con un S3 propio y nunca con R2.
+    image: adobe/s3mock:3.12.0
     environment:
-      MINIO_ROOT_USER: ${MINIO_USER:?falta load.env}
-      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:?falta load.env}
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: belopia-load
     networks: [carga]
-    mem_limit: 256m
+    mem_limit: 384m
     cpus: 0.25
 
   backend:
@@ -80,11 +79,11 @@ services:
       KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET}
       ALLOWED_AZP: klaro-frontend
       R2_ACCOUNT_ID: load
-      R2_ACCESS_KEY_ID: ${MINIO_USER}
-      R2_SECRET_ACCESS_KEY: ${MINIO_PASSWORD}
+      R2_ACCESS_KEY_ID: ${S3_ACCESS_KEY:?falta load.env}
+      R2_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?falta load.env}
       R2_BUCKET_NAME: belopia-load
-      R2_ENDPOINT: http://minio:9000
-      R2_PUBLIC_URL: http://minio:9000/belopia-load
+      R2_ENDPOINT: http://s3:9090
+      R2_PUBLIC_URL: http://s3:9090/belopia-load
       R2_FOLDER_PREFIX: load
       SENTRY_DSN: ""
       # Rate limit: ALTO por defecto para los escenarios de capacidad (pos-concurrencia, idempotencia).
