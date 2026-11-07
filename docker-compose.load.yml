@@ -58,7 +58,7 @@ services:
     environment:
       COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: belopia-load
     networks: [carga]
-    mem_limit: 384m
+    mem_limit: 512m
     cpus: 0.25
 
   backend:
