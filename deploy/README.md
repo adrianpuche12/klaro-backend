@@ -59,3 +59,31 @@ docker logs belopia-backend-dev -f --tail 100
 
 Los compose de este repo son la referencia. El del servidor (`/opt/belopia/<amb>/docker-compose.yml`)
 se actualiza a mano: guardar antes un backup `.bak-<motivo>-<fecha>` y no cambiar otros servicios.
+
+## Proyecto de Compose propio (`belopia-dev` / `belopia-prod`)
+
+Sin `name:`, Compose toma el nombre de la carpeta: `/opt/belopia/dev`, `/opt/humberto-v2/dev` y
+`/opt/iurivia/dev` quedaban en el **mismo** proyecto `dev` (y lo mismo con `prod`). Los compose de
+este repo fijan `name: belopia-<amb>`, así cualquier comando de Compose en la carpeta de Belopia
+queda en Belopia.
+
+- No cambia la conectividad: el backend llega a `belopia-postgres` por la IP del host
+  (`62.171.160.238:5438`), no por una red de Compose. La red `dev_default` solo tenía al
+  backend de Belopia (verificado el 07-Nov).
+- `desplegar.sh` se frena (sin tocar nada) si el contenedor que corre es de otro proyecto que el
+  del compose de la carpeta. El pase se hace una vez, a mano:
+
+```bash
+cd /opt/belopia/dev                                    # PROD: solo en la ventana de promoción, con OK
+cp docker-compose.yml docker-compose.yml.bak-pre-name-$(date +%Y%m%d-%H%M%S)
+# agregar arriba del archivo:  name: belopia-dev
+docker stop belopia-backend-dev
+docker rename belopia-backend-dev belopia-backend-dev-pre-name   # queda parado, NO se borra
+docker compose up -d --no-deps belopia-backend-dev
+curl -s http://127.0.0.1:8111/actuator/health                   # esperar "UP"
+docker compose ls                                               # aparece belopia-dev
+```
+
+Rollback: `docker stop belopia-backend-dev && docker rename belopia-backend-dev belopia-backend-dev-new`,
+`docker rename belopia-backend-dev-pre-name belopia-backend-dev && docker start belopia-backend-dev`,
+y volver al backup del compose. El contenedor `-pre-name` solo se borra con el OK de Jorge.
