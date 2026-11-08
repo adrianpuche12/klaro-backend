@@ -30,6 +30,9 @@
         <java.version>21</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <!-- El runner ubuntu-26.04 trae un Docker que exige API >= 1.40; el Testcontainers de Boot 3.3.2
+             (1.19.x) habla 1.32 y ningún *IT arranca. 1.21.4 negocia la versión de la API. -->
+        <testcontainers.version>1.21.4</testcontainers.version>
     </properties>
     <dependencies>
         <dependency>
