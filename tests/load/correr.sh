@@ -80,13 +80,7 @@ for esc in "$@"; do
         sort -t';' -k2 -g -r "$RES/$esc/.stats.csv" 2>/dev/null | sed 's/%//' | awk -F';' '!vistos[$1]++ {print "| "$1" | "$2" % | "$3" |"}'
         echo
         echo "### Pool Hikari durante la corrida (una muestra cada 5 s)"
-        awk -F';' '{ if ($1+0 > a) a = $1+0; if ($2+0 > p) p = $2+0; t = $3 } END {
-            printf "- Espera maxima para conseguir conexion: %d ms
-- Pedidos esperando conexion (max): %d
-- Timeouts del pool (acumulado): %d
-- Muestras: %d
-",
-                   a * 1000, p, t, NR }' "$RES/$esc/.hikari.csv" 2>/dev/null
+        awk -F';' '{ if ($1+0 > a) a = $1+0; if ($2+0 > p) p = $2+0; t = $3 } END { printf "- Espera maxima para conseguir conexion: %d ms\n- Pedidos esperando conexion (max): %d\n- Timeouts del pool (acumulado): %d\n- Muestras: %d\n", a * 1000, p, t, NR }' "$RES/$esc/.hikari.csv" 2>/dev/null
         echo
         echo "### Prometheus del backend al terminar (pool Hikari, heap, hilos, GC, 5xx y 429)"
         echo '```'
