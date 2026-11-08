@@ -1,0 +1,101 @@
+# Mejora continua v4 (k6): pruebas de carga contra un ambiente DESCARTABLE levantado dentro de este mismo runner
+# (docker-compose.load.yml: Postgres + Keycloak + MinIO propios + backend con perfil load, en una red sin salida).
+# No toca ningun servidor de Nilo (ni Contabo, ni el Keycloak compartido con PH v2, ni R2, ni Sentry).
+# Solo a mano por ahora; el disparo semanal queda para el PR 4 de la propuesta.
+# El repo es PUBLICO: el artifact lleva SOLO k6-summary.json e informe.md por escenario (handleSummary).
+# Nunca logs, headers ni tokens.
+name: Pruebas de carga (k6)
+
+on:
+  # Ojo: workflow_dispatch solo aparece cuando este archivo esta en la rama por defecto (main).
+  workflow_dispatch:
+    inputs:
+      escenarios:
+        description: 'Escenarios de tests/load/ separados por espacio'
+        required: true
+        default: 'humo pos-concurrencia idempotencia'
+      pool_max:
+        description: 'Pool Hikari del backend (DEV y PROD hoy = 10, el default de Spring Boot)'
+        required: false
+        default: '10'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: carga-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  k6:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      LOAD_DB_POOL_MAX: ${{ inputs.pool_max || '10' }}
+      COMMIT: ${{ github.sha }}
+      ESCENARIOS: ${{ inputs.escenarios || 'humo pos-concurrencia idempotencia' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validar escenarios pedidos
+        run: |
+          for e in $ESCENARIOS; do
+            case "$e" in *[!a-z0-9-]*) echo "nombre de escenario invalido: $e"; exit 1;; esac
+            test -f "tests/load/$e.js" || { echo "no existe tests/load/$e.js"; exit 1; }
+          done
+
+      - name: Levantar ambiente descartable y semilla sintetica
+        run: bash tests/load/ambiente/levantar.sh
+
+      - name: Correr k6
+        run: bash tests/load/correr.sh $ESCENARIOS
+
+      - name: Verificar que nada salio del runner y que el resultado no tiene secretos
+        if: always()
+        run: |
+          DC="docker compose -f docker-compose.load.yml --env-file tests/load/.generado/load.env"
+          # La red "carga" es internal: ningun contenedor tiene salida. Se verifica de verdad desde adentro.
+          if $DC exec -T postgres wget -q -T 5 -O /dev/null https://repo.maven.apache.org/ 2>/dev/null; then
+            echo "ERROR: la red del ambiente tiene salida a internet"; exit 1
+          fi
+          echo "salida a internet desde la red del ambiente: bloqueada (ok)"
+          # Logs: se miran aca y NO se suben. Ningun intento de hablar con R2, Sentry ni servidores de Nilo.
+          $DC logs backend > /tmp/backend.log 2>&1
+          externos=$(grep -cE 'r2\.cloudflarestorage|sentry\.io|ingest\.sentry|belopia\.app|62\.171\.160\.238' /tmp/backend.log || true)
+          echo "referencias a servicios externos en los logs del backend: $externos"
+          # El artifact es publico: ni tokens (JWT), ni Authorization, ni la clave de los usuarios
+          set -a; . tests/load/.generado/load.env; set +a
+          fugas=0
+          for f in tests/load/resultados/*/k6-summary.json tests/load/resultados/*/informe.md; do
+            [ -f "$f" ] || continue
+            if grep -qE 'eyJ[A-Za-z0-9_-]{20,}|Bearer |Authorization' "$f" || grep -qF "$LOAD_USER_PASSWORD" "$f"; then
+              echo "ERROR: $f tiene algo que parece un secreto"; fugas=1
+            fi
+          done
+          { echo "## Aislamiento"; echo "- Salida a internet de la red del ambiente: bloqueada";
+            echo "- Referencias a servicios externos en logs del backend: $externos";
+            echo "- Secretos en los resultados: $([ $fugas = 0 ] && echo ninguno || echo '**ENCONTRADOS, no se suben**')"; } >> "$GITHUB_STEP_SUMMARY"
+          if [ $fugas != 0 ]; then rm -rf tests/load/resultados; exit 1; fi
+          test "$externos" = "0"
+
+      - name: Resumen en la corrida
+        if: always()
+        run: |
+          for f in tests/load/resultados/*/informe.md; do
+            [ -f "$f" ] && { cat "$f"; echo; } >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Subir resultados (solo k6-summary.json e informe.md)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-${{ github.run_number }}
+          path: |
+            tests/load/resultados/*/k6-summary.json
+            tests/load/resultados/*/informe.md
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Bajar ambiente
+        if: always()
+        run: bash tests/load/ambiente/levantar.sh bajar
