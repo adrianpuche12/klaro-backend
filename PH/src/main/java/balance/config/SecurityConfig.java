@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -18,6 +19,7 @@ import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.SupplierJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -44,6 +46,25 @@ public class SecurityConfig {
     @Value("${app.security.allowed-azp:klaro-frontend}")
     private String allowedAzp;
 
+    // Rate limit (mejora continua v4, aprobado por Jorge el 07-Nov). Los valores vienen de
+    // RATE_LIMIT_* en application.properties; si faltan, los de la tabla (RateLimitingFilter).
+    @Value("${app.rate-limit.user-per-min:" + RateLimitingFilter.DEFAULT_USER_PER_MIN + "}")
+    private int rateLimitUserPerMin;
+
+    @Value("${app.rate-limit.anon-ip-per-min:" + RateLimitingFilter.DEFAULT_ANON_IP_PER_MIN + "}")
+    private int rateLimitAnonIpPerMin;
+
+    @Value("${app.rate-limit.ip-ceiling-per-min:" + RateLimitingFilter.DEFAULT_IP_CEILING_PER_MIN + "}")
+    private int rateLimitIpCeilingPerMin;
+
+    /**
+     * Mejora continua v4 (k6): true solo en el perfil load, donde el backend vive en una red de
+     * Docker sin salida y sin puertos publicados. En dev y prod queda en false: /actuator/prometheus
+     * no se puede pedir (y además el endpoint no está expuesto).
+     */
+    @Value("${app.metrics.prometheus-interno:false}")
+    private boolean prometheusInterno;
+
     // Endpoints públicos — no requieren JWT
     private static final String[] PUBLIC_PATHS = {
         "/swagger-ui/**",
@@ -63,11 +84,16 @@ public class SecurityConfig {
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(PUBLIC_PATHS).permitAll()
+                .requestMatchers("/actuator/prometheus").access((a, ctx) -> new AuthorizationDecision(prometheusInterno))
                 .anyRequest().authenticated()
             )
             .oauth2ResourceServer(oauth2 -> oauth2
                 .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
-            );
+            )
+            // Después de validar el token (el usuario es un sub ya verificado) y antes de la
+            // autorización (los pedidos sin token también cuentan, aunque después den 401).
+            .addFilterAfter(new RateLimitingFilter(rateLimitUserPerMin, rateLimitAnonIpPerMin, rateLimitIpCeilingPerMin),
+                    BearerTokenAuthenticationFilter.class);
 
         return http.build();
     }
