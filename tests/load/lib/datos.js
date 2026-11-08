@@ -34,6 +34,16 @@ export function idempotencia() {
     return DATOS.idempotencia;
 }
 
+/** Local 93: { local } SIN turno abierto (turnos.js lo abre y lo cierra). */
+export function turnos() {
+    return DATOS.turnos;
+}
+
+/** Local 94: { local, producto, turno, stock } (stock chico: ajustes del encargado contra ventas). */
+export function ajuste() {
+    return DATOS.ajuste;
+}
+
 /** Cuerpo de una venta en efectivo (el usuario lo pisa el backend con el del token, pero es obligatorio). */
 export function venta(productId, cantidad = 1) {
     return JSON.stringify({ username: 'k6', items: [{ productId, quantity: cantidad }], paymentMethod: 'CASH' });

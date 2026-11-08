@@ -8,7 +8,9 @@
 -- La empresa A tiene ademas dos locales para las carreras:
 --   91 "Carga carrera POS":    1 producto (91001) con stock :stock_carrera y un turno abierto (pos-concurrencia.js)
 --   92 "Carga idempotencia":   1 producto (92001) con stock alto y un turno abierto (idempotencia.js)
--- Variables psql (con valores por defecto en levantar.sh): productos, dias, ventas, cajeros, stock_carrera.
+--   93 "Carga turnos":         SIN turno abierto: lo abren dos cajas a la vez una y otra vez (turnos.js)
+--   94 "Carga ajuste y venta": 1 producto (94001) con stock :stock_ajuste y un turno abierto (ajuste-vs-venta.js)
+-- Variables psql (con valores por defecto en levantar.sh): productos, dias, ventas, cajeros, stock_carrera, stock_ajuste.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -28,7 +30,9 @@ SELECT t.id * 10 + n, t.id, 'Carga ' || upper(chr(96 + t.id::int)) || CASE n WHE
 FROM tenants t CROSS JOIN generate_series(1, 2) n WHERE t.slug LIKE 'carga-%';
 INSERT INTO store (id, tenant_id, name, address, phone, active, created_at) VALUES
     (91, 1, 'Carga carrera POS', 'Av Sintetica 91', '000', true, now()),
-    (92, 1, 'Carga idempotencia', 'Av Sintetica 92', '000', true, now());
+    (92, 1, 'Carga idempotencia', 'Av Sintetica 92', '000', true, now()),
+    (93, 1, 'Carga turnos', 'Av Sintetica 93', '000', true, now()),
+    (94, 1, 'Carga ajuste y venta', 'Av Sintetica 94', '000', true, now());
 
 -- Una categoria por local
 INSERT INTO categories (id, tenant_id, store_id, name, description, active, display_order, created_at)
@@ -41,12 +45,13 @@ SELECT s.id * 1000 + n, s.tenant_id, s.id, s.id, 'Producto ' || s.id || '-' || n
 FROM store s CROSS JOIN generate_series(1, :productos) n WHERE s.tenant_id IN (1, 2, 3) AND s.id < 90;
 INSERT INTO products (id, tenant_id, store_id, category_id, name, sku, type, price, min_stock, description, active, created_at) VALUES
     (91001, 1, 91, 91, 'Producto carrera', 'C-91-1', 'SIMPLE', 1000, 0, 'stock limitado para pos-concurrencia.js', true, now()),
-    (92001, 1, 92, 92, 'Producto idempotencia', 'C-92-1', 'SIMPLE', 1000, 0, 'stock alto para idempotencia.js', true, now());
+    (92001, 1, 92, 92, 'Producto idempotencia', 'C-92-1', 'SIMPLE', 1000, 0, 'stock alto para idempotencia.js', true, now()),
+    (94001, 1, 94, 94, 'Producto ajuste y venta', 'C-94-1', 'SIMPLE', 1000, 0, 'stock chico para ajuste-vs-venta.js', true, now());
 
 -- Stock y su movimiento de entrada
 INSERT INTO inventory_stock (tenant_id, product_id, store_id, quantity, updated_at)
 SELECT p.tenant_id, p.id, p.store_id,
-       CASE p.id WHEN 91001 THEN :stock_carrera ELSE 1000000 END, now()
+       CASE p.id WHEN 91001 THEN :stock_carrera WHEN 94001 THEN :stock_ajuste ELSE 1000000 END, now()
 FROM products p WHERE p.tenant_id IN (1, 2, 3);
 INSERT INTO inventory_movements (tenant_id, product_id, store_id, quantity, type, reason, notes, username, performed_by, source, created_at)
 SELECT st.tenant_id, st.product_id, st.store_id, st.quantity, 'ENTRADA', 'carga inicial', 'sintetico',
@@ -80,10 +85,10 @@ SELECT setval(pg_get_serial_sequence('store', 'id'), (SELECT max(id) FROM store)
 SELECT setval(pg_get_serial_sequence('categories', 'id'), (SELECT max(id) FROM categories));
 SELECT setval(pg_get_serial_sequence('products', 'id'), (SELECT max(id) FROM products));
 
--- Turno ABIERTO en cada local (uno solo por local: ux_shift_open)
+-- Turno ABIERTO en cada local (uno solo por local: ux_shift_open), menos el 93: ese lo abre turnos.js
 INSERT INTO shifts (tenant_id, store_id, code, username, status, opened_at)
 SELECT s.tenant_id, s.id, 'T-' || s.id, 'encargado1.' || chr(96 + s.tenant_id::int), 'OPEN', now() - interval '1 hour'
-FROM store s WHERE s.tenant_id IN (1, 2, 3);
+FROM store s WHERE s.tenant_id IN (1, 2, 3) AND s.id <> 93;
 
 -- Historial: un turno cerrado por dia y por local normal, de un cajero en ronda
 INSERT INTO shifts (tenant_id, store_id, code, username, status, opened_at, closed_at)
