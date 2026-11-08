@@ -37,3 +37,7 @@ target/
 # Los que se quieran versionar van sin secretos y se agregan con `git add -f`.
 deploy/*.sh
 *.local.sh
+
+# Pruebas de carga (k6): claves y datos generados por corrida, resultados locales
+tests/load/.generado/
+tests/load/resultados/
