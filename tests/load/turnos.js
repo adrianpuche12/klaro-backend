@@ -16,6 +16,8 @@ import { resumen, porEndpoint, SIN_429 } from './lib/resumen.js';
 const turnosDobles = new Counter('turnos_dobles');          // rondas con mas de una apertura OK
 const aperturasPerdidas = new Counter('aperturas_perdidas'); // rondas sin ninguna apertura OK (todas 409 sin turno)
 const turnosAbiertos = new Counter('turnos_abiertos_ok');
+const aperturas400 = new Counter('aperturas_400');           // la apertura fallo con 400 (no es "ya hay un turno abierto")
+let primerError = null;
 const respuestas5xx = new Counter('respuestas_5xx');
 
 const T = turnos();
@@ -62,6 +64,10 @@ export default function (s) {
     if (ok.length > 1) turnosDobles.add(ok.length - 1);
     if (ok.length === 0) aperturasPerdidas.add(1);
     turnosAbiertos.add(ok.length);
+    const malas = r.filter((x) => x.status === 400);
+    aperturas400.add(malas.length);
+    // el texto va solo a la consola del job (datos sinteticos), nunca al artifact
+    if (malas.length && primerError === null) { primerError = malas[0].body; console.log(`primer 400 al abrir: ${String(primerError).slice(0, 300)}`); }
 
     const activo = http.get(`${BASE_URL}/api/v2/shifts/active/${T.local}`, conNombre(s.root, ACTIVO));
     const idActivo = activo.status === 200 ? activo.json('id') : null;

@@ -47,7 +47,7 @@ const aceptadosPasado = new Counter('aceptados_pasado');
 const aceptadosAnon = new Counter('aceptados_anonimos');
 const aceptadosTecho = new Counter('aceptados_techo');
 const ventasCaja = new Counter('ventas_caja_ok');
-const sinRetryAfter = new Counter('429_sin_retry_after');
+const sinRetryAfter = new Counter('respuestas_429_sin_retry_after');
 const respuestas5xx = new Counter('respuestas_5xx');
 
 const LOCAL = empresa('carga-a').locales[0];
@@ -81,7 +81,7 @@ export const options = {
         aceptados_pasado: [`count<=${tope(POR_USUARIO, F1)}`],
         aceptados_anonimos: [`count<=${tope(ANON_POR_IP, F1)}`],
         aceptados_techo: [`count<=${tope(TECHO_IP, F2)}`],
-        '429_sin_retry_after': ['count==0'],
+        'respuestas_429_sin_retry_after': ['count==0'],
         respuestas_5xx: ['count==0'],
         'checks{tipo:rate}': ['rate==1'],
     }, porEndpoint(['POST keycloak token', STORES, ACTIVO, QUOTE, VENTA], {})),
