@@ -13,7 +13,10 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @Entity
-@Table(name = "shifts")
+// Código único POR EMPRESA (V16: ux_shifts_tenant_code). Antes era único en toda la base y dos
+// empresas con locales del mismo prefijo chocaban al abrir en el mismo minuto.
+@Table(name = "shifts",
+       uniqueConstraints = @UniqueConstraint(name = "ux_shifts_tenant_code", columnNames = {"tenant_id", "code"}))
 public class Shift {
 
     @Id
@@ -23,7 +26,7 @@ public class Shift {
     @Column(name = "tenant_id", nullable = false)
     private Long tenantId;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private String code;
 
     @NotBlank

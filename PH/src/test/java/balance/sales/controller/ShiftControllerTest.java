@@ -69,6 +69,20 @@ class ShiftControllerTest {
     }
 
     @Test
+    void openShift_errorInesperado_daMensajeClaro_sinTextoSql() throws Exception {
+        // Antes: "No se pudo abrir el turno: could not execute statement [ERROR: duplicate key ...] [insert into shifts ...]"
+        when(shiftService.openShift(eq(1L), any())).thenThrow(new org.springframework.dao.DataIntegrityViolationException(
+                "could not execute statement [ERROR: duplicate key value violates unique constraint] [insert into shifts (code) values (?)]"));
+
+        mockMvc.perform(post("/api/v2/stores/1/shifts")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("username", "cajero01"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(ShiftController.OPEN_SHIFT_FAILED))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("insert"))));
+    }
+
+    @Test
     void openShift_usesDefaultUsernameWhenNotProvided() throws Exception {
         when(shiftService.openShift(eq(1L), eq("unknown"))).thenReturn(buildShiftResponse("OPEN"));
 

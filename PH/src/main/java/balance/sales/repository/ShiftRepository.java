@@ -45,6 +45,11 @@ public interface ShiftRepository extends JpaRepository<Shift, Long> {
            nativeQuery = true)
     Optional<Long> lockStoreForShiftOpening(@Param("storeId") Long storeId, @Param("tenantId") Long tenantId);
 
+    /** Turnos del local cuyo código empieza con el prefijo (correlativo del día, ver ShiftService.generateCode). */
+    @Query("select count(s) from Shift s where s.store.id = :storeId and s.tenantId = :tenantId and s.code like :prefix")
+    long countByStoreAndCodePrefix(@Param("storeId") Long storeId, @Param("tenantId") Long tenantId,
+                                   @Param("prefix") String prefix);
+
     /** Historial de un local filtrado por quien abrió el turno ("Mis ventas" del cajero). */
     Page<Shift> findByStoreIdAndTenantIdAndUsernameIgnoreCaseOrderByOpenedAtDesc(
             Long storeId, Long tenantId, String username, Pageable pageable);
