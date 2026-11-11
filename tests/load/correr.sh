@@ -48,7 +48,7 @@ limites() { # prod | alto: recrea SOLO el backend del compose descartable con es
 hikari() { # una muestra cada 5 s: espera max del pool (s), pendientes, timeouts acumulados, heap usado (bytes), CPU del proceso (0-1)
     while true; do
         "${DC[@]}" exec -T postgres wget -qO- http://backend:8080/actuator/prometheus 2>/dev/null | awk '/^hikaricp_connections_acquire_seconds_max\{/ {a=$2} /^hikaricp_connections_pending\{/ {p=$2}
-                 /^hikaricp_connections_timeout_total\{/ {t=$2} /^jvm_memory_used_bytes\{.*area="heap"/ {h+=$2} /^process_cpu_usage\{/ {c=$2} END {if (a != "") print a";"p";"t";"h";"c}'
+                 /^hikaricp_connections_timeout_total\{/ {t=$2} /^jvm_memory_used_bytes\{.*area="heap"/ {h+=$NF} /^process_cpu_usage\{/ {c=$2} END {if (a != "") print a";"p";"t";"h";"c}'
         sleep 5
     done
 }
