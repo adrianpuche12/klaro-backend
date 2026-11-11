@@ -125,6 +125,25 @@ public class PermissionGuard {
     }
 
     /**
+     * Como {@link #assertAccess(PermissionModule, Long)}, pero alcanza con cualquiera de los
+     * módulos. Para lecturas que comparten dos pantallas: el POS necesita leer el catálogo y el
+     * stock de SU local para vender, sin tener los módulos de Inventario o Catálogo (que
+     * además dan la pantalla de gestión). El local se exige igual que siempre.
+     */
+    public void assertAccessAny(Long storeId, PermissionModule... modules) {
+        Optional<AppUser> maybeUser = restrictedUser();
+        if (maybeUser.isEmpty()) {
+            return;
+        }
+        AppUser user = maybeUser.get();
+        requireAllowedStore(user, storeId);
+        Set<String> granted = effectivePermissions(user);
+        if (Arrays.stream(modules).noneMatch(m -> granted.contains(m.name()))) {
+            throw new AccessDeniedException("No tenés acceso a este módulo");
+        }
+    }
+
+    /**
      * Escritura "de encargado" sobre un módulo con local: editar el catálogo, salidas y
      * ajustes de stock, editar/borrar operaciones y depósitos. Igual que
      * {@link #assertAccess(PermissionModule, Long)} y además exige un Role con

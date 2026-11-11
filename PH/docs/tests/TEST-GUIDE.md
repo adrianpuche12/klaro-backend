@@ -13,6 +13,7 @@
 9. [Cobertura y objetivos](#9-cobertura-y-objetivos)
 10. [Convenciones y patrones usados](#10-convenciones-y-patrones-usados)
 11. [Roadmap — tests de integración](#11-roadmap--tests-de-integración)
+13. [Permisos y aislamiento entre empresas (HTTP)](#13-permisos-y-aislamiento-entre-empresas-http)
 
 ---
 
@@ -496,3 +497,38 @@ Requieren levantar el contexto completo de Spring:
 ### KeycloakAdminService (WireMock)
 Requiere agregar `wiremock-standalone` como dependencia de test:
 - Simular respuestas HTTP de Keycloak para `createUser`, `setUserEnabled`, `deleteUser`
+
+---
+
+## 13. Permisos y aislamiento entre empresas (HTTP)
+
+Tests en `PH/src/test/java/balance/security/http/`. Levantan Spring completo con Postgres
+(Testcontainers) y llaman a la API con tokens de 4 roles de la empresa A (`fixture.sql`).
+
+| Test | Qué verifica | Cuándo corre |
+|---|---|---|
+| `PermissionMatrixIT` | Recorre `PermissionMatrix`: rol × endpoint → `OK` (2xx), `403` o `-` (no aplica). Ninguna celda admite 5xx. | `mvn verify` (Failsafe), en el CI de cada PR |
+| `CrossTenantHttpIT` | Recorre `CrossTenantCatalog`: un usuario de la empresa B nunca lee ni modifica datos de A. | `mvn verify` |
+| `EndpointCoverageTest` | Por reflexión, todo endpoint de un `@RestController` tiene al menos una fila en la matriz y un caso entre empresas (o está excluido con motivo). | `mvn test`, sin Docker |
+
+### Agregar o cambiar un endpoint
+
+1. Agregar su fila en `PermissionMatrix` con el resultado esperado para root, encargado, cajero y contador.
+2. Agregar su caso en `CrossTenantCatalog`.
+3. Si no, `EndpointCoverageTest` falla. Excluir un endpoint solo con un motivo escrito.
+
+### Lecturas compartidas entre módulos: `assertAccessAny`
+
+`PermissionGuard.assertAccessAny(storeId, modulo1, modulo2, ...)` permite el acceso si el rol
+tiene **alguno** de los módulos, y además exige que el local esté asignado al usuario. Se usa
+cuando una pantalla necesita leer datos de otro módulo sin poder modificarlos:
+
+- `GET /api/v2/stores/{id}/categories` → `CATALOG` **o** `POS`.
+- `GET /api/v2/stores/{id}/stock` → `INVENTORY` **o** `POS`.
+
+Así un cajero con solo `POS` ve el catálogo y el stock de su local, pero no puede ajustar stock
+ni editar categorías (el resto de los endpoints de inventario y catálogo siguen exigiendo `INVENTORY` o `CATALOG`) ni leer un local
+no asignado (fila `GET /api/v2/stores/3/categories` → `403` para los roles acotados).
+
+Regla: no dar un módulo de más a un rol para que una pantalla funcione. Si una pantalla necesita
+leer datos de otro módulo, se resuelve en el endpoint con `assertAccessAny` y su fila en la matriz.
