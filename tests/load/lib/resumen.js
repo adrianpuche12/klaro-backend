@@ -11,7 +11,9 @@ const CONTADORES = ['ventas_ok', 'ventas_sin_stock', 'ventas_otro_estado', 'vent
     // PR 4: turnos.js, ajuste-vs-venta.js y rate-limit.js
     'turnos_abiertos_ok', 'turnos_dobles', 'aperturas_perdidas', 'aperturas_400',
     'entradas_ok', 'mermas_ok', 'mermas_sin_stock', 'respuestas_otro_estado', 'descuadres', 'stock_final', 'ventas_registradas',
-    'ventas_caja_ok', 'aceptados_pasado', 'aceptados_anonimos', 'aceptados_techo', 'respuestas_429_sin_retry_after'];
+    'ventas_caja_ok', 'aceptados_pasado', 'aceptados_anonimos', 'aceptados_techo', 'respuestas_429_sin_retry_after',
+    // PR 4 parte 2: carga-multi-tenant.js
+    'fugas_entre_empresas'];
 
 /**
  * Umbrales por endpoint para options.thresholds. k6 solo calcula la metrica de un tag (name) si hay un umbral sobre

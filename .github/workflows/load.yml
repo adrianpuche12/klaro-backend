@@ -18,7 +18,7 @@ on:
       escenarios:
         description: 'Escenarios de tests/load/ separados por espacio'
         required: true
-        default: 'humo pos-concurrencia idempotencia turnos ajuste-vs-venta rate-limit'
+        default: 'humo pos-concurrencia idempotencia turnos ajuste-vs-venta rate-limit informes listados carga-multi-tenant'
       pool_max:
         description: 'Pool Hikari del backend (DEV y PROD hoy = 10, el default de Spring Boot)'
         required: false
@@ -40,7 +40,7 @@ jobs:
     env:
       LOAD_DB_POOL_MAX: ${{ inputs.pool_max || '10' }}
       COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
-      ESCENARIOS: ${{ inputs.escenarios || 'humo pos-concurrencia idempotencia turnos ajuste-vs-venta rate-limit' }}
+      ESCENARIOS: ${{ inputs.escenarios || 'humo pos-concurrencia idempotencia turnos ajuste-vs-venta rate-limit informes listados carga-multi-tenant' }}
     steps:
       - uses: actions/checkout@v4
 
