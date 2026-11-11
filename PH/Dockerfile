@@ -12,5 +12,8 @@ RUN groupadd --system --gid 10001 spring && useradd --system --uid 10001 --gid s
 WORKDIR /app
 COPY --from=build --chown=spring:spring /app/target/PH-0.0.1-SNAPSHOT.jar app.jar
 USER spring:spring
+# Versión que ve Sentry (release): el commit, para saber qué deploy rompió algo. La pasa deploy.yml.
+ARG GIT_SHA=local
+ENV SENTRY_RELEASE=belopia-backend@${GIT_SHA}
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]
