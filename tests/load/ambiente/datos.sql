@@ -20,5 +20,10 @@ SELECT json_build_object(
                                  'stock', (SELECT quantity FROM inventory_stock WHERE product_id = 91001))),
     'idempotencia', (
         SELECT json_build_object('tenant', 1, 'local', 92, 'producto', 92001,
-                                 'turno', (SELECT id FROM shifts WHERE store_id = 92 AND status = 'OPEN')))
+                                 'turno', (SELECT id FROM shifts WHERE store_id = 92 AND status = 'OPEN'))),
+    'turnos', json_build_object('tenant', 1, 'local', 93),
+    'ajuste', (
+        SELECT json_build_object('tenant', 1, 'local', 94, 'producto', 94001,
+                                 'turno', (SELECT id FROM shifts WHERE store_id = 94 AND status = 'OPEN'),
+                                 'stock', (SELECT quantity FROM inventory_stock WHERE product_id = 94001)))
 );

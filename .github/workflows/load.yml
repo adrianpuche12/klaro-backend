@@ -1,19 +1,24 @@
 # Mejora continua v4 (k6): pruebas de carga contra un ambiente DESCARTABLE levantado dentro de este mismo runner
 # (docker-compose.load.yml: Postgres + Keycloak + MinIO propios + backend con perfil load, en una red sin salida).
 # No toca ningun servidor de Nilo (ni Contabo, ni el Keycloak compartido con PH v2, ni R2, ni Sentry).
-# Solo a mano por ahora; el disparo semanal queda para el PR 4 de la propuesta.
+# Disparo: la etiqueta `k6` en un PR (corre la version de este archivo de la rama del PR, sin tocar la rama por
+# defecto) o a mano. El disparo semanal queda para despues (fuera del alcance del PR 4, parte 1).
+# Cuidar los minutos (2.000/mes): una corrida por cambio, sin reintentos en serie.
 # El repo es PUBLICO: el artifact lleva SOLO k6-summary.json e informe.md por escenario (handleSummary).
 # Nunca logs, headers ni tokens.
 name: Pruebas de carga (k6)
 
 on:
+  # Poner la etiqueta `k6` en el PR. Para volver a correr: sacarla y ponerla de nuevo (una corrida por cambio).
+  pull_request:
+    types: [labeled]
   # Ojo: workflow_dispatch solo aparece cuando este archivo esta en la rama por defecto (main).
   workflow_dispatch:
     inputs:
       escenarios:
         description: 'Escenarios de tests/load/ separados por espacio'
         required: true
-        default: 'humo pos-concurrencia idempotencia'
+        default: 'humo pos-concurrencia idempotencia turnos ajuste-vs-venta rate-limit'
       pool_max:
         description: 'Pool Hikari del backend (DEV y PROD hoy = 10, el default de Spring Boot)'
         required: false
@@ -23,17 +28,19 @@ permissions:
   contents: read
 
 concurrency:
-  group: carga-${{ github.ref }}
+  group: carga-${{ github.head_ref || github.ref }}
   cancel-in-progress: false
 
 jobs:
   k6:
+    # con pull_request, solo la etiqueta k6 (cualquier otra etiqueta no gasta minutos)
+    if: github.event_name != 'pull_request' || github.event.label.name == 'k6'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
       LOAD_DB_POOL_MAX: ${{ inputs.pool_max || '10' }}
-      COMMIT: ${{ github.sha }}
-      ESCENARIOS: ${{ inputs.escenarios || 'humo pos-concurrencia idempotencia' }}
+      COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+      ESCENARIOS: ${{ inputs.escenarios || 'humo pos-concurrencia idempotencia turnos ajuste-vs-venta rate-limit' }}
     steps:
       - uses: actions/checkout@v4
 

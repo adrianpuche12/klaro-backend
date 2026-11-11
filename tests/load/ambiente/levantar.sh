@@ -9,7 +9,7 @@
 # interna "carga" del compose (sin salida a internet). Las claves se generan en cada corrida en
 # tests/load/.generado/ (ignorado por git) y mueren con el ambiente.
 # Variables opcionales: LOAD_PRODUCTOS (40), LOAD_DIAS (365), LOAD_VENTAS_POR_TURNO (30), LOAD_CAJEROS (10),
-# LOAD_STOCK_CARRERA (50), LOAD_RATE_LIMIT_PROD=1 (rate limit con los valores de PROD), LOAD_SIN_BUILD=1.
+# LOAD_STOCK_CARRERA (50), LOAD_STOCK_AJUSTE (60), LOAD_RATE_LIMIT_PROD=1 (rate limit con los valores de PROD), LOAD_SIN_BUILD=1.
 # =====================================================================
 set -euo pipefail
 
@@ -28,6 +28,7 @@ DIAS="${LOAD_DIAS:-365}"
 VENTAS="${LOAD_VENTAS_POR_TURNO:-30}"
 export LOAD_CAJEROS="${LOAD_CAJEROS:-10}"
 STOCK_CARRERA="${LOAD_STOCK_CARRERA:-50}"
+STOCK_AJUSTE="${LOAD_STOCK_AJUSTE:-60}"
 
 mkdir -p "$GEN" tests/load/resultados
 chmod 777 tests/load/resultados   # el contenedor de k6 corre con otro usuario
@@ -82,7 +83,7 @@ esperar "realm belopia-load importado" dentro http://keycloak:8080/realms/belopi
 echo "== semilla sintetica"
 PSQL=("${DC[@]}" exec -T postgres psql -q -U belopia_owner -d belopia_load)
 "${PSQL[@]}" -v productos="$PRODUCTOS" -v dias="$DIAS" -v ventas="$VENTAS" -v cajeros="$LOAD_CAJEROS" \
-    -v stock_carrera="$STOCK_CARRERA" -f /semilla/semilla.sql
+    -v stock_carrera="$STOCK_CARRERA" -v stock_ajuste="$STOCK_AJUSTE" -f /semilla/semilla.sql
 "${PSQL[@]}" -f /generado/usuarios.sql
 "${PSQL[@]}" -At -f /semilla/datos.sql | grep '^{' > "$GEN/datos.json"
 chmod 644 "$GEN/datos.json"
