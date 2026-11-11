@@ -25,7 +25,8 @@ public class CategoryController {
     //Ãrbol completo de categorÃ­as de un local
     @GetMapping("/api/v2/stores/{storeId}/categories")
     public ResponseEntity<List<CategoryResponseDTO>> getTree(@PathVariable Long storeId) {
-        permissionGuard.assertAccess(PermissionModule.CATALOG, storeId);
+        // El POS (cajero) lee el árbol para filtrar el catálogo de su local; editar sigue pidiendo CATALOG.
+        permissionGuard.assertAccessAny(storeId, PermissionModule.CATALOG, PermissionModule.POS);
         return ResponseEntity.ok(categoryService.getTree(storeId));
     }
 

@@ -25,6 +25,8 @@ import java.util.Map;
 @RequestMapping("/api/v3/operations")
 public class OperationsV3Controller {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(OperationsV3Controller.class);
+
     @Autowired private OperationsV3Service operationsService;
     @Autowired private ReportService        reportService;
     @Autowired private TenantConfigService tenantConfigService;
@@ -100,8 +102,10 @@ public class OperationsV3Controller {
         } catch (RecursoNoEncontradoException e) {
             throw e; // 404: el local no es de esta empresa (no un error del servidor)
         } catch (Exception e) {
+            // Nunca devolver e.getMessage(): puede traer SQL o datos internos. El detalle va al log.
+            log.error("Error generando el informe de operaciones", e);
             return ResponseEntity.internalServerError()
-                    .body(("Error generando el informe: " + e.getMessage()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    .body("No se pudo generar el informe. Probá de nuevo.".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         }
     }
 
