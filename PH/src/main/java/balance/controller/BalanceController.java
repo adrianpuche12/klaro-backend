@@ -29,6 +29,8 @@ import java.util.Optional;
 @RequestMapping("/transactions")
 public class BalanceController {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(BalanceController.class);
+
     @Autowired
     private BalanceService balanceService;
 
@@ -69,8 +71,9 @@ public class BalanceController {
         } catch (RecursoNoEncontradoException e) {
             throw e; // 404: el local no es de esta empresa (no un error del servidor)
         } catch (Exception e) {
-            // Manejo genérico de errores
-            return ResponseEntity.status(500).body("Error al registrar la transacción: " + e.getMessage());
+            // Nunca devolver e.getMessage(): puede traer SQL o datos internos. El detalle va al log.
+            log.error("Error al registrar la transacción", e);
+            return ResponseEntity.status(500).body("No se pudo registrar la transacción. Probá de nuevo.");
         }
     }
 

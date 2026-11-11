@@ -82,18 +82,18 @@ class ShiftServiceTest {
 
         ShiftResponseDTO result = shiftService.openShift(1L, "cajero01");
 
-        assertThat(result.getCode()).matches("T-\\d{8}-\\d{4}-[A-Z]{1,3}");
+        assertThat(result.getCode()).matches("T-\\d{8}-\\d{4}-[A-Z]{0,3}\\d+-\\d+");
     }
 
     @Test
-    void openShift_codeEndsWithFirstThreeLettersOfStoreName() {
+    void openShift_codeLlevaTresLetrasIdDelLocalYCorrelativo() {
         when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
         when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, ShiftStatus.OPEN, TENANT_ID)).thenReturn(false);
         when(shiftRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ShiftResponseDTO result = shiftService.openShift(1L, "cajero01");
 
-        assertThat(result.getCode()).endsWith("-DAN");
+        assertThat(result.getCode()).endsWith("-DAN1-1");
     }
 
     @Test
@@ -104,7 +104,20 @@ class ShiftServiceTest {
 
         ShiftResponseDTO result = shiftService.openShift(2L, "cajero02");
 
-        assertThat(result.getCode()).endsWith("-ELP");
+        assertThat(result.getCode()).endsWith("-ELP2-1");
+    }
+
+    @Test
+    void openShift_correlativoDelDia_siguienteAlDeLosTurnosDeHoyDelLocal() {
+        String hoy = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
+        when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, ShiftStatus.OPEN, TENANT_ID)).thenReturn(false);
+        when(shiftRepository.countByStoreAndCodePrefix(1L, TENANT_ID, "T-" + hoy + "-%")).thenReturn(2L);
+        when(shiftRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        ShiftResponseDTO result = shiftService.openShift(1L, "cajero01");
+
+        assertThat(result.getCode()).endsWith("-DAN1-3");
     }
 
     @Test
@@ -173,10 +186,24 @@ class ShiftServiceTest {
         when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, ShiftStatus.OPEN, TENANT_ID)).thenReturn(false);
         when(shiftRepository.saveAndFlush(any())).thenThrow(new org.springframework.dao.DataIntegrityViolationException(
                 "could not execute statement",
-                new org.hibernate.exception.ConstraintViolationException("duplicate key", null, "shifts_code_key")));
+                new org.hibernate.exception.ConstraintViolationException("fk violation", null, "shifts_store_id_fkey")));
 
         assertThatThrownBy(() -> shiftService.openShift(1L, "cajero01"))
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void openShift_codigoRepetidoEnLaEmpresa_da409ConMensajeClaro_sinSql() {
+        when(storeRepository.findByIdAndTenantId(1L, TENANT_ID)).thenReturn(Optional.of(buildStore(1L, "Danli")));
+        when(shiftRepository.existsByStoreIdAndStatusAndTenantId(1L, ShiftStatus.OPEN, TENANT_ID)).thenReturn(false);
+        when(shiftRepository.saveAndFlush(any())).thenThrow(new org.springframework.dao.DataIntegrityViolationException(
+                "could not execute statement",
+                new org.hibernate.exception.ConstraintViolationException("duplicate key", null, "ux_shifts_tenant_code")));
+
+        assertThatThrownBy(() -> shiftService.openShift(1L, "cajero01"))
+                .isInstanceOf(balance.common.exception.ConflictException.class)
+                .hasMessage(ShiftService.SHIFT_CODE_TAKEN)
+                .message().doesNotContain("duplicate", "insert", "constraint");
     }
 
     // ── closeShift ────────────────────────────────────────────────────────────

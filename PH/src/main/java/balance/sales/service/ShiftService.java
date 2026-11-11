@@ -44,19 +44,23 @@ public class ShiftService {
         shift.setStore(store);
         shift.setUsername(username);
         shift.setStatus(ShiftStatus.OPEN);
-        shift.setCode(generateCode(store));
+        shift.setCode(generateCode(store, tenantId));
         shift.setTenantId(tenantId);
         try {
             shiftRepository.saveAndFlush(shift);
         } catch (DataIntegrityViolationException e) {
             // Red de seguridad: el índice único parcial ux_shift_open (V14).
             if (violates(e, "ux_shift_open")) throw new ConflictException(SHIFT_ALREADY_OPEN);
+            // Código repetido dentro de la empresa (V16). No debería pasar: lleva el id del local
+            // y el correlativo del día, calculado con el local bloqueado. Mensaje claro, sin SQL.
+            if (violates(e, "ux_shifts_tenant_code")) throw new ConflictException(SHIFT_CODE_TAKEN);
             throw e;
         }
         return ShiftResponseDTO.from(shift);
     }
 
     static final String SHIFT_ALREADY_OPEN = "Ya hay un turno abierto en este local";
+    static final String SHIFT_CODE_TAKEN = "No se pudo abrir el turno en este momento. Probá de nuevo.";
 
     private static boolean violates(Throwable e, String constraint) {
         for (Throwable t = e; t != null; t = t.getCause()) {
@@ -113,14 +117,23 @@ public class ShiftService {
                 .orElseThrow(() -> new RecursoNoEncontradoException("Turno no encontrado"));
     }
 
-    private String generateCode(Store store) {
+    /**
+     * {@code T-<fecha>-<HHmm>-<3 letras del local><id del local>-<n>}, con la fecha y la hora de la empresa.
+     * n es el correlativo del día en ese local: se calcula con el local ya bloqueado
+     * (lockStoreForShiftOpening), así que dos aperturas del mismo local no lo repiten, y el id del
+     * local evita que dos locales de la empresa con el mismo prefijo choquen. Único por empresa
+     * (V16: ux_shifts_tenant_code); entre empresas el código se puede repetir sin problema.
+     * Ejemplo: T-20261111-0900-SUC12-2 (segundo turno del día del local 12, "Sucursal Centro").
+     */
+    String generateCode(Store store, Long tenantId) {
         String date = tenantConfigService.today().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         // Hora de la empresa (no la del servidor, que corre en UTC), igual que la fecha.
         String time = LocalTime.now(tenantConfigService.zoneId()).format(DateTimeFormatter.ofPattern("HHmm"));
-        String storePart = store.getName()
+        String storePart = store.getName() == null ? "" : store.getName()
                 .replaceAll("[^a-zA-Z]", "")
                 .toUpperCase();
         if (storePart.length() > 3) storePart = storePart.substring(0, 3);
-        return "T-" + date + "-" + time + "-" + storePart;
+        long delDia = shiftRepository.countByStoreAndCodePrefix(store.getId(), tenantId, "T-" + date + "-%");
+        return "T-" + date + "-" + time + "-" + storePart + store.getId() + "-" + (delDia + 1);
     }
 }
