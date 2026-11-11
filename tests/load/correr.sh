@@ -45,10 +45,10 @@ limites() { # prod | alto: recrea SOLO el backend del compose descartable con es
     "${DC[@]}" exec -T backend env | grep -E '^RATE_LIMIT_' | sed 's/^/   /'
 }
 
-hikari() { # una muestra del pool cada 5 s: espera max (s), pendientes y timeouts acumulados
+hikari() { # una muestra cada 5 s: espera max del pool (s), pendientes, timeouts acumulados, heap usado (bytes), CPU del proceso (0-1)
     while true; do
-        "${DC[@]}" exec -T postgres wget -qO- http://backend:8080/actuator/prometheus 2>/dev/null           | awk '/^hikaricp_connections_acquire_seconds_max\{/ {a=$2} /^hikaricp_connections_pending\{/ {p=$2}
-                 /^hikaricp_connections_timeout_total\{/ {t=$2} END {if (a != "") print a";"p";"t}'
+        "${DC[@]}" exec -T postgres wget -qO- http://backend:8080/actuator/prometheus 2>/dev/null | awk '/^hikaricp_connections_acquire_seconds_max\{/ {a=$2} /^hikaricp_connections_pending\{/ {p=$2}
+                 /^hikaricp_connections_timeout_total\{/ {t=$2} /^jvm_memory_used_bytes\{.*area="heap"/ {h+=$NF} /^process_cpu_usage\{/ {c=$2} END {if (a != "") print a";"p";"t";"h";"c}'
         sleep 5
     done
 }
@@ -79,8 +79,8 @@ for esc in "$@"; do
         echo '|---|---|---|'
         sort -t';' -k2 -g -r "$RES/$esc/.stats.csv" 2>/dev/null | sed 's/%//' | awk -F';' '!vistos[$1]++ {print "| "$1" | "$2" % | "$3" |"}'
         echo
-        echo "### Pool Hikari durante la corrida (una muestra cada 5 s)"
-        awk -F';' '{ if ($1+0 > a) a = $1+0; if ($2+0 > p) p = $2+0; t = $3 } END { printf "- Espera maxima para conseguir conexion: %d ms\n- Pedidos esperando conexion (max): %d\n- Timeouts del pool (acumulado): %d\n- Muestras: %d\n", a * 1000, p, t, NR }' "$RES/$esc/.hikari.csv" 2>/dev/null
+        echo "### Pool Hikari, heap y CPU del backend durante la corrida (una muestra cada 5 s)"
+        awk -F';' '{ if ($1+0 > a) a = $1+0; if ($2+0 > p) p = $2+0; t = $3; if ($4+0 > h) h = $4+0; if ($5+0 > c) c = $5+0 } END { printf "- Espera maxima para conseguir conexion: %d ms\n- Pedidos esperando conexion (max): %d\n- Timeouts del pool (acumulado): %d\n- Heap usado (max): %d MiB\n- CPU del proceso (max, sobre el total de la maquina): %d %%\n- Muestras: %d\n", a * 1000, p, t, h / 1048576, c * 100, NR }' "$RES/$esc/.hikari.csv" 2>/dev/null
         echo
         echo "### Prometheus del backend al terminar (pool Hikari, heap, hilos, GC, 5xx y 429)"
         echo '```'
