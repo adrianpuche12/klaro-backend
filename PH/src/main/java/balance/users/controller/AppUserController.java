@@ -26,6 +26,8 @@ import java.util.Map;
 @RequestMapping("/api/v2/users")
 public class AppUserController {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AppUserController.class);
+
     @Autowired
     private AppUserService userService;
 
@@ -77,7 +79,10 @@ public class AppUserController {
             // testing E2E: violar la cascada de niveles daba 500, no 403).
             throw e;
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().body(Map.of("error", "Error al crear usuario: " + e.getMessage()));
+            // Nunca devolver e.getMessage(): trae respuestas de Keycloak y datos internos. El detalle va al log.
+            log.error("Error al crear usuario", e);
+            return ResponseEntity.internalServerError().body(Map.of("error",
+                    "No se pudo crear el usuario. Si el nombre de usuario ya existe, probá con otro."));
         }
     }
 

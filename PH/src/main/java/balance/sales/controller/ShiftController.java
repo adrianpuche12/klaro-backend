@@ -25,6 +25,11 @@ import java.util.Map;
 @RequestMapping("/api/v2")
 public class ShiftController {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ShiftController.class);
+
+    /** Mensaje del 400 cuando la apertura falla por algo inesperado (sin detalles internos). */
+    static final String OPEN_SHIFT_FAILED = "No se pudo abrir el turno. Probá de nuevo y, si sigue, avisá al encargado.";
+
     @Autowired
     private ShiftService shiftService;
 
@@ -49,7 +54,9 @@ public class ShiftController {
         } catch (IllegalStateException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", "No se pudo abrir el turno: " + e.getMessage()));
+            // Antes devolvía e.getMessage(), con el texto del SQL (Corrida k6 2). El detalle va al log.
+            log.error("No se pudo abrir el turno del local {}", storeId, e);
+            return ResponseEntity.badRequest().body(Map.of("error", OPEN_SHIFT_FAILED));
         }
     }
 
