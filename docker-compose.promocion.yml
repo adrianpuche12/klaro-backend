@@ -1,0 +1,105 @@
+# Mejora continua v6: ENSAYO DE LA PROMOCION (de V1 a la ultima migracion) en un ambiente DESCARTABLE.
+# Corre solo en el runner de GitHub Actions (promocion.yml) o en un docker local, con tests/promocion/ensayar.sh.
+# No toca ningun servidor: base, Keycloak y S3 propios, en una red de Docker SIN salida a internet
+# (internal: true) y sin puertos publicados. La base se llama belopia_prod a proposito: V11 crea los permisos
+# para <base>_app, igual que el dia de la promocion. Ningun dato real: todo es sintetico.
+# Las claves salen de tests/promocion/.generado/promocion.env (las genera ensayar.sh en cada corrida; ignorado por git).
+
+name: belopia-promocion
+
+networks:
+  carga:
+    internal: true
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: belopia_owner
+      POSTGRES_PASSWORD: ${DB_MIGRATION_PASSWORD:?falta promocion.env}
+      POSTGRES_DB: belopia_prod
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD:?falta promocion.env}
+    volumes:
+      - ./tests/promocion/postgres-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+      - ./tests/promocion:/promocion:ro
+      - ./tests/load/ambiente:/semilla:ro
+      - ./tests/promocion/.generado:/generado:ro
+    networks: [carga]
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U belopia_owner -d belopia_prod"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  # Flyway de linea de comandos, la misma version que trae Spring Boot 3.3 (10.10): deja la base en V1,
+  # como esta PROD hoy (main tiene solo V1__baseline_schema.sql).
+  flyway:
+    image: flyway/flyway:10.10.0
+    profiles: ["herramientas"]
+    environment:
+      FLYWAY_URL: jdbc:postgresql://postgres:5432/belopia_prod
+      FLYWAY_USER: belopia_owner
+      FLYWAY_PASSWORD: ${DB_MIGRATION_PASSWORD}
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+    volumes:
+      - ./PH/src/main/resources/db/migration:/flyway/sql:ro
+    networks: [carga]
+
+  keycloak:
+    # realm belopia-load generado por tests/load/ambiente/generar_usuarios.py (usuarios sinteticos), nunca
+    # exportado de un servidor.
+    image: quay.io/keycloak/keycloak:26.0.7
+    command: ["start-dev", "--import-realm", "--http-port=8080"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?falta promocion.env}
+      KC_LOG_LEVEL: WARN
+      JAVA_OPTS_KC_HEAP: "-Xms256m -Xmx512m"
+    volumes:
+      - ./tests/promocion/.generado/realm-belopia-load.json:/opt/keycloak/data/import/realm-belopia-load.json:ro
+    networks: [carga]
+    mem_limit: 1g
+
+  s3:
+    image: adobe/s3mock:3.12.0
+    environment:
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: belopia-promocion
+    networks: [carga]
+    mem_limit: 512m
+
+  # El backend arranca con el perfil prod (el de la promocion): la guardia de RLS es estricta y Flyway
+  # migra desde V1 con el dueno, la app conecta con belopia_prod_app.
+  backend:
+    image: belopia-backend:promocion
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:postgresql://postgres:5432/belopia_prod
+      DB_USER: belopia_prod_app
+      DB_PASSWORD: ${DB_APP_PASSWORD}
+      DB_MIGRATION_USER: belopia_owner
+      DB_MIGRATION_PASSWORD: ${DB_MIGRATION_PASSWORD}
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: belopia-load
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET}
+      ALLOWED_AZP: klaro-frontend
+      R2_ACCOUNT_ID: promocion
+      R2_ACCESS_KEY_ID: ${S3_ACCESS_KEY:?falta promocion.env}
+      R2_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?falta promocion.env}
+      R2_BUCKET_NAME: belopia-promocion
+      R2_ENDPOINT: http://s3:9090
+      R2_PUBLIC_URL: http://s3:9090/belopia-promocion
+      R2_FOLDER_PREFIX: promocion
+      SENTRY_DSN: ""
+      JAVA_TOOL_OPTIONS: "-Xms256m -Xmx640m -XX:+ExitOnOutOfMemoryError"
+    networks: [carga]
+    mem_limit: 1g
+
+  # Cliente HTTP dentro de la red (los tokens y claves van por stdin, nunca como argumento)
+  curl:
+    image: curlimages/curl:8.10.1
+    profiles: ["herramientas"]
+    networks: [carga]

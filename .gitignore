@@ -41,3 +41,5 @@ deploy/*.sh
 # Pruebas de carga (k6): claves y datos generados por corrida, resultados locales
 tests/load/.generado/
 tests/load/resultados/
+tests/promocion/.generado/
+tests/promocion/resultados/
