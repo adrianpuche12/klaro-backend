@@ -1,0 +1,75 @@
+# Mejora continua v6: ENSAYO DE LA PROMOCION. Lleva una base descartable de V1 (lo que tiene main) a la ultima
+# migracion, con el backend en perfil prod, en un ambiente levantado dentro de este mismo runner
+# (docker-compose.promocion.yml: Postgres, Keycloak y S3 propios, en una red sin salida a internet).
+# No toca ningun servidor de Nilo (ni Contabo, ni el Keycloak compartido, ni R2, ni Sentry).
+# Corre solo cuando cambia algo que afecta la promocion (migraciones, el propio ensayo) y en todo PR hacia main.
+# El repo es PUBLICO: el artifact lleva SOLO los informe.md (sin datos ni tokens). Los logs quedan en el runner.
+name: Ensayo de la promocion
+
+on:
+  pull_request:
+    paths:
+      - 'PH/src/main/resources/db/migration/**'
+      - 'tests/promocion/**'
+      - 'tests/load/ambiente/semilla.sql'
+      - 'tests/load/ambiente/generar_usuarios.py'
+      - 'docker-compose.promocion.yml'
+      - '.github/workflows/promocion.yml'
+  # Ojo: workflow_dispatch solo aparece cuando este archivo esta en la rama por defecto (main).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promocion-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ensayo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensayar las 3 variantes (prod-vacia, con-datos, casos-borde)
+        run: bash tests/promocion/ensayar.sh
+
+      - name: Verificar que el resultado no tiene secretos
+        if: always()
+        run: |
+          [ -f tests/promocion/.generado/promocion.env ] || exit 0
+          set -a; . tests/promocion/.generado/promocion.env; set +a
+          fugas=0
+          for f in tests/promocion/resultados/*/informe.md; do
+            [ -f "$f" ] || continue
+            if grep -qE 'eyJ[A-Za-z0-9_-]{20,}|Bearer |Authorization' "$f" \
+               || grep -qF -e "$LOAD_USER_PASSWORD" -e "$DB_MIGRATION_PASSWORD" -e "$DB_APP_PASSWORD" "$f"; then
+              echo "ERROR: $f tiene algo que parece un secreto"; fugas=1
+            fi
+          done
+          if [ $fugas != 0 ]; then rm -rf tests/promocion/resultados; exit 1; fi
+          # Solo los informes salen del runner
+          find tests/promocion/resultados -type f ! -name informe.md -delete 2>/dev/null || true
+
+      - name: Resumen en la corrida
+        if: always()
+        run: |
+          for f in tests/promocion/resultados/*/informe.md; do
+            [ -f "$f" ] && { cat "$f"; echo; } >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Subir informes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ensayo-promocion-${{ github.run_number }}
+          path: tests/promocion/resultados/*/informe.md
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Bajar ambiente
+        if: always()
+        run: bash tests/promocion/ensayar.sh bajar
